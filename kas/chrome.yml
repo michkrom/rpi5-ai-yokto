@@ -7,7 +7,7 @@ target:
 repos:
   meta-browser:
     url: https://github.com/OSSystems/meta-browser
-    refspec: scarthgap
+    refspec: 8413be0ef9e5e3ee3d07e5b2782e7918126c13da
     path: layers/meta-browser
     layers:
       meta-chromium:

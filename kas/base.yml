@@ -73,7 +73,12 @@ local_conf_header:
         HALT,${SSTATE_DIR},100M,1K \
         HALT,/tmp,10M,1K"
   parallelism: |
-    # Limit bitbake task parallelism
-    BB_NUMBER_THREADS = "4"
-    # Limit ninja parallelism to avoid OOM during chromium compile
-    PARALLEL_MAKE = "-j 2"
+    # Limit to 20 threads max to prevent OOM crashes when compiling Chromium
+    BB_NUMBER_THREADS = "20"
+    PARALLEL_MAKE = "-j 20"
+  memory-management: |
+    # Additional memory management for large compilations like Chromium
+    BB_TASK_NICE_LEVEL = "5"
+    BB_TASK_IONICE_LEVEL = "idle"
+    # Reduce memory pressure during compilation
+    TASKSET_MOZILLA = "true"
