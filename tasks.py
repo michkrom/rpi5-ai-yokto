@@ -354,13 +354,52 @@ def shell(ctx, core=False, wayland=False, weston=False, chrome=False, quake3=Fal
 
 
 @task
-def docker_shell(ctx):
-    """Open a plain docker shell (no kas setup)."""
+def container_shell(ctx):
+    """Open a plain shell inside the running build container (no kas setup)."""
     _ensure_container(ctx)
     ctx.run(
         f'docker exec -u {CONTAINER_USER} -it {CONTAINER_NAME} bash',
         pty=False,
     )
+
+
+docker_shell = container_shell  # backward compat alias
+
+
+@task
+def container_status(ctx):
+    """Check whether the build container is running / image exists."""
+    try:
+        ctx.run(f'docker image inspect {IMAGE}', hide=True)
+        img = "exists"
+    except UnexpectedExit:
+        img = "NOT FOUND"
+
+    r = ctx.run(f'docker ps -q --filter name={CONTAINER_NAME}', hide=True)
+    run = "running" if r.stdout.strip() else "stopped"
+    print(f"Image '{IMAGE}': {img}")
+    print(f"Container '{CONTAINER_NAME}': {run}")
+
+
+@task
+def container_start(ctx):
+    """Start (or restart) the background build container."""
+    ctx.run(f'docker rm -f {CONTAINER_NAME}', warn=True, hide=True)
+    _ensure_container(ctx)
+    print(f"Container {CONTAINER_NAME} is running")
+
+
+@task
+def container_stop(ctx):
+    """Stop and remove the background build container."""
+    ctx.run(f'docker rm -f {CONTAINER_NAME}', warn=True, hide=True)
+    print(f"Container {CONTAINER_NAME} removed")
+
+
+@task
+def container_exec(ctx, command):
+    """Run a command inside the build container (auto-starts if needed)."""
+    _run_in_container(ctx, command, echo=True)
 
 
 @task
