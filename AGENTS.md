@@ -2,11 +2,11 @@
 
 AI-assisted Yocto/Kas build system for Raspberry Pi 5, dockerized with multiple image levels.
 
-## GUIDELINE: Prefer invoke or MCP wrappers
+## GUIDELINE: Use invoke tooling and MCP wrappers
 
-**Prefer using invoke commands or MCP wrappers over raw docker/bash commands** (`docker exec`, `docker run`, etc.)
+**Before executing build commands, inspect invoke tooling and MCP server wrappers in preference to explicit docker commands**
 
-### Why prefer wrappers:
+### Why use wrappers:
 - MCP tools handle container lifecycle correctly
 - Prevents concurrent builds that corrupt sstate
 - Ensures logs are written to correct locations
@@ -93,7 +93,7 @@ yocto_build_clean(recipe="chromium-ozone-wayland")  # Clean specific recipe
 ```
 
 ## Key Tips for Agents
-- Prefer invoke commands or MCP wrappers over raw docker commands
+- Inspect invoke tooling and MCP wrappers before using explicit docker commands
 - Build logs persist in `build-{level}.log` after builds exit
 - Shared state cache is safe to reuse across builds
 - Layers are automatically cloned by kas into `layers/`
