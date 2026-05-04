@@ -2,6 +2,8 @@
 
 Kas-based Yocto build system targeting Raspberry Pi 5 (scarthgap / 5.0.17) with AI-assisted build processes for Kas/Yocto operations, fully dockerized for consistent builds. Contains multiple image levels with increasing functionality from headless to graphical applications.
 
+This project includes AI agent tools built with [PI](https://github.com/badlogic/pi) and [OpenCode](https://opencode.net), enabling intelligent automation and troubleshooting of the build process. The build system exposes functionality through MCP (Model Context Protocol) tools that can be discovered and used by AI agents. See [AGENTS.md](AGENTS.md) for detailed guidance on using these tools.
+
 ## Prerequisites
 
 - Docker, docker-build
@@ -15,6 +17,8 @@ Kas-based Yocto build system targeting Raspberry Pi 5 (scarthgap / 5.0.17) with 
 | **wayland** | core + Wayland desktop + Weston compositor |
 | **chrome**  | wayland + Chromium browser |
 | **quake3**  | wayland + Quake3e (Vulkan Quake 3 engine) |
+
+Each level builds upon the previous one, adding more functionality. The core level provides a minimal system, wayland adds a graphical desktop environment, chrome includes a web browser, and quake3 adds a gaming engine.
 
 ## Usage
 
@@ -129,3 +133,13 @@ build/deploy/images/raspberrypi5/
 ├── *.dtb / *.dtbo                                 # Device trees
 └── bootfiles/                                     # RPi firmware
 ```
+
+## AI Agent Integration
+
+This project includes AI agent capabilities through:
+
+- **MCP Server Tools**: Exposes build system functionality through standardized Model Context Protocol tools
+- **PI Extension**: Custom tools for Yocto operations that can be discovered by AI agents
+- **Agent Guidance**: See [AGENTS.md](AGENTS.md) for detailed information on using AI-assisted build processes
+
+The agent can automatically discover tools like `yocto_build_start`, `yocto_build_logs`, and others to intelligently automate and troubleshoot the build process.

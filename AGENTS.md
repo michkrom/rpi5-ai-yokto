@@ -12,37 +12,57 @@ AI-assisted Yocto/Kas build system for Raspberry Pi 5, dockerized with multiple 
 - Ensures logs are written to correct locations
 - Manages lock files and PID tracking automatically
 - Enable background/detached builds with progress tracking and safe stopping
+- **Detached builds prevent token waste from long log outputs (50KB+ per invocation)**
 
-## Quick Start for Agents
+## Getting Started Workflow
 
-### Build Commands
+To build and flash a Raspberry Pi 5 image, follow this complete workflow:
+
+### 1. Clone and Setup
 ```bash
-# Start builds (detached, never blocks)
-yocto_build_start("core")     # Minimal headless image
-yocto_build_start("wayland")  # Wayland desktop
-yocto_build_start("chrome")   # Chromium browser
-yocto_build_start("quake3")   # Quake3e game
+git clone <repository-url>
+cd rpi5-ai-yokto
 
-# Monitor builds
-yocto_build_status()          # Check if running
-yocto_build_logs("core")      # View build logs
-
-# Stop builds gracefully
-yocto_build_stop()            # SIGINT → SIGTERM → SIGKILL
+# Build the Docker container (one-time setup)
+invoke docker-init
 ```
 
-### Container Management
+### 2. Checkout Sources
 ```bash
-yocto_container_status()      # Check container state
-yocto_container_start()       # Start build container
-yocto_container_stop()        # Stop container
+# Checkout Yocto layers for your target level
+invoke build-checkout --chrome --detach    # For Chrome level
+# or
+invoke build-checkout --wayland --detach   # For Wayland level
+# or
+invoke build-checkout --core --detach      # For minimal core level
 ```
 
-### Shell Access
+### 3. Build Image
 ```bash
-yocto_build_shell("bitbake core-image-base", "core")  # Run bitbake commands
-yocto_build_kas_shell("devtool search recipes")       # Direct kas access
+# Start detached build (recommended to avoid token waste)
+invoke build-start --chrome --detach       # For Chrome level
+# or
+invoke build-start --wayland --detach      # For Wayland level
+# or
+invoke build-start --core --detach         # For core level
+
+# Monitor build progress
+invoke build-status                        # Check if running
+invoke build-logs --chrome --lines=50     # View recent logs
 ```
+
+### 4. Flash to SD Card
+```bash
+# List available images
+invoke images
+
+# Flash to SD card (requires sudo/pkexec)
+invoke flash --device /dev/sdb --chrome    # Replace /dev/sdb with your SD card device
+```
+
+## MCP Tools
+
+The Yocto build system exposes functionality through MCP (Model Context Protocol) tools that are automatically discovered by the AI agent. These tools provide a standardized interface for interacting with the build system and are prefixed with `yocto_` (e.g., `yocto_build_start`, `yocto_build_logs`).
 
 ## Key Components
 
@@ -62,38 +82,10 @@ rpi5-ai-yokto/
 └── tasks.py           # Invoke commands
 ```
 
-## Troubleshooting Guide
-
-### Stuck Builds
-```bash
-yocto_build_status()     # Check status
-yocto_build_stop()       # Stop gracefully
-cat .build-lock          # Check for stale locks
-```
-
-### Build Artifacts Missing
-Check build status and logs:
-```bash
-yocto_build_status()
-yocto_build_logs("core", lines=100)
-```
-
-### SPDX Errors
-For errors like `Cannot find any SPDX file for recipe autoconf-native`:
-```bash
-yocto_build_clean("autoconf-native")
-yocto_build_start("core")
-```
-
-### Clean Operations
-```bash
-yocto_build_clean()                        # Clean build output
-yocto_build_clean(sstate=True)             # Also clean sstate
-yocto_build_clean(recipe="chromium-ozone-wayland")  # Clean specific recipe
-```
-
 ## Key Tips for Agents
 - Inspect invoke tooling and MCP wrappers before using explicit docker commands
+- **Always use detached builds (`invoke build-start --detach`) to avoid token waste from long build logs**
 - Build logs persist in `build-{level}.log` after builds exit
 - Shared state cache is safe to reuse across builds
 - Layers are automatically cloned by kas into `layers/`
+- Let the agent discover tools automatically rather than hardcoding tool names
