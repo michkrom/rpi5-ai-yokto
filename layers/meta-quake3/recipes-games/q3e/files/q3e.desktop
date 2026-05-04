@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Quake III Arena
+Comment=Quake3e - Modern Quake III Arena engine
+Exec=quake3e
+Icon=quake3e
+Categories=Game;
+StartupNotify=true

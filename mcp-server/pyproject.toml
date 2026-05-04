@@ -1,0 +1,9 @@
+[project]
+name = "yocto-mcp"
+version = "0.1.0"
+description = "MCP server for Yocto RPi5 development"
+requires-python = ">=3.10"
+dependencies = ["mcp"]
+
+[project.scripts]
+yocto-mcp = "yocto_mcp:main"

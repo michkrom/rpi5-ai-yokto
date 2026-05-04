@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "yocto": {
+      "type": "local",
+      "command": ["python3", "mcp-server/src/yocto_mcp/server.py"],
+      "enabled": true
+    }
+  }
+}

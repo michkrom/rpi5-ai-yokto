@@ -1,0 +1,24 @@
+# kas checkout output (downloaded layers)
+layers/*
+!layers/meta-quake3/
+
+# kas build output (downloads, tmp, sstate, etc.)
+build/
+
+# BitBake runtime artifacts
+bitbake.lock
+bitbake.sock
+bitbake-cookerdaemon.log
+
+# Build lock file
+.build-lock
+
+# OS/editor junk
+.DS_Store
+*.swp
+*.log
+*.lock
+__pycache__
+*~
+.idea/
+.vscode/

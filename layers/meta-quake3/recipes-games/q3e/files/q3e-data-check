@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+import os
+import sys
+import urllib.request
+from pathlib import Path
+
+Q3_DIR = Path("/usr/share/q3e/baseq3")
+PKG_URL = "https://raw.githubusercontent.com/nrempel/q3-server/master/baseq3"
+PAKS = [f"pak{i}.pk3" for i in range(9)]
+LOG = Path("/tmp/q3e-data-check.log")
+
+
+def log(msg):
+    with open(LOG, "a") as f:
+        f.write(msg + "\n")
+    print(msg)
+
+
+def download_all():
+    for pak in PAKS:
+        dest = Q3_DIR / pak
+        url = f"{PKG_URL}/{pak}"
+        log(f"Downloading {pak} ...")
+        try:
+            urllib.request.urlretrieve(url, dest)
+            size = dest.stat().st_size
+            log(f"  done ({size // 1024 // 1024} MB)")
+        except Exception as e:
+            log(f"  failed: {e}")
+            if dest.exists():
+                dest.unlink()
+
+
+def interactive():
+    print()
+    print("Options:")
+    print("  1) Download all Quake 3 game data (pak0-pak8.pk3)")
+    print("  2) Copy files from an existing Quake 3 installation")
+    print("  q) Quit")
+    print()
+    choice = input("Choice: ").strip()
+    if choice == "1":
+        download_all()
+    elif choice == "2":
+        print(f"Copy your .pk3 files to {Q3_DIR}")
+    else:
+        print("Exiting")
+
+
+def main():
+    Q3_DIR.mkdir(parents=True, exist_ok=True)
+    pk3s = sorted(Q3_DIR.glob("*.pk3"))
+    if pk3s:
+        total = sum(f.stat().st_size for f in pk3s)
+        log(f"Quake 3 data found: {len(pk3s)} pk3 files ({total // 1024 // 1024} MB)")
+        return
+    log("No Quake 3 game data found.")
+    log(f"Expected .pk3 files in {Q3_DIR}")
+    if sys.stdin.isatty():
+        interactive()
+    else:
+        log("Run 'q3e-data-check' in a terminal to download demo data or copy pak files")
+
+
+if __name__ == "__main__":
+    main()

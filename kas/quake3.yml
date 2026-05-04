@@ -1,0 +1,22 @@
+header:
+  version: 18
+
+target:
+  - core-image-weston
+
+repos:
+  meta-quake3:
+    path: layers/meta-quake3
+
+local_conf_header:
+  wayland: |
+    DISTRO_FEATURES:append = " wayland pam"
+    DISTRO_FEATURES:remove = " x11"
+  quake3: |
+    CORE_IMAGE_EXTRA_INSTALL += "q3e"
+  skip-qa: |
+    INSANE_SKIP:cairo += "file-rdeps"
+    INSANE_SKIP:glib-2.0 += "file-rdeps"
+    INSANE_SKIP:weston += "file-rdeps"
+    INSANE_SKIP:weston-examples += "file-rdeps"
+    INSANE_SKIP:libweston-13 += "file-rdeps"
