@@ -84,6 +84,8 @@ yokto/
 Kas clones layers into `layers/` (gitignored wholesale). To add custom layers,
 place them in `layers/` and reference them in `kas/base.yml` under `repos`.
 
+The `meta-quake3` layer serves as a practical example of how to create and integrate your own custom layers.
+
 ## Configuration
 
 ### Machine + Distro
