@@ -57,6 +57,16 @@ def _lock_alive_ctx(ctx, lock):
     return _lock_alive(lambda c: ctx.run(c, hide=True).stdout, lock)
 
 
+def _assert_no_running_build(ctx):
+    lock = _read_lock()
+    if _lock_alive_ctx(ctx, lock):
+        raise Exit(
+            f"{lock.get('type', 'Build').capitalize()} '{lock['level']}' is running. "
+            "Only one operation at a time."
+        )
+    _clear_lock()
+
+
 @task(help={"no-cache": "Do not use cache when building the image"})
 def docker_init(ctx, no_cache=False):
     """Build the yokto Docker container."""
@@ -89,13 +99,9 @@ def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, q
     """Fetch layers and write config (no build)."""
     _ensure_image(ctx)
     level = _validate(_level(core, wayland, weston, chrome, quake3))
+    _assert_no_running_build(ctx)
 
     if detach:
-        if _lock_alive_ctx(ctx, _read_lock()):
-            existing = _read_lock()
-            raise Exit(f"{existing.get('type', 'Build').capitalize()} '{existing['level']}' is running. Only one operation at a time.")
-        _clear_lock()
-
         _ensure_container(ctx)
         flags = ""
         if update:
@@ -115,22 +121,21 @@ def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, q
         _write_lock(level, pid, "checkout")
         print(f"Checkout '{level}' started (PID {pid}).")
     else:
-        if _lock_alive_ctx(ctx, _read_lock()):
-            existing = _read_lock()
-            raise Exit(f"{existing.get('type', 'Build').capitalize()} '{existing['level']}' is running. Only one operation at a time.")
-        _clear_lock()
-
         _ensure_container(ctx)
         flags = ""
         if update:
             flags += " --update"
         if force:
             flags += " --force"
-        _run_in_container(
-            ctx,
-            f'cd {WORK_MOUNT} && kas checkout{flags} {_kas_args(level)}',
-            echo=True,
-        )
+        _write_lock(level, 0, "checkout")
+        try:
+            _run_in_container(
+                ctx,
+                f'cd {WORK_MOUNT} && kas checkout{flags} {_kas_args(level)}',
+                echo=True,
+            )
+        finally:
+            _clear_lock()
 
 
 @task(
@@ -148,13 +153,9 @@ def build_start(ctx, core=False, wayland=False, weston=False, chrome=False, quak
     """Checkout layers and build the image."""
     _ensure_image(ctx)
     level = _validate(_level(core, wayland, weston, chrome, quake3))
+    _assert_no_running_build(ctx)
 
     if detach:
-        if _lock_alive_ctx(ctx, _read_lock()):
-            existing = _read_lock()
-            raise Exit(f"{existing.get('type', 'Build').capitalize()} '{existing['level']}' is running. Only one operation at a time.")
-        _clear_lock()
-
         _ensure_container(ctx)
         cmd = (
             f'cd {WORK_MOUNT} && '
@@ -169,33 +170,31 @@ def build_start(ctx, core=False, wayland=False, weston=False, chrome=False, quak
         _write_lock(level, pid, "build")
         print(f"Build '{level}' started (PID {pid}).")
     elif log:
-        if _lock_alive_ctx(ctx, _read_lock()):
-            existing = _read_lock()
-            raise Exit(f"{existing.get('type', 'Build').capitalize()} '{existing['level']}' is running. Only one operation at a time.")
-        _clear_lock()
-
         _ensure_container(ctx)
-        cmd = f'cd {WORK_MOUNT} && kas build {_kas_args(level)} > {log} 2>&1'
-        ctx.run(
-            f'docker exec -u {CONTAINER_USER} {CONTAINER_NAME} bash -lc {shlex.quote(cmd)}',
-            echo=False,
-            pty=False,
-            warn=True,
-        )
-        print(f"\nBuild log saved to {log}")
+        _write_lock(level, 0, "build")
+        try:
+            cmd = f'cd {WORK_MOUNT} && kas build {_kas_args(level)} > {log} 2>&1'
+            ctx.run(
+                f'docker exec -u {CONTAINER_USER} {CONTAINER_NAME} bash -lc {shlex.quote(cmd)}',
+                echo=False,
+                pty=False,
+                warn=True,
+            )
+            print(f"\nBuild log saved to {log}")
+        finally:
+            _clear_lock()
     else:
-        if _lock_alive_ctx(ctx, _read_lock()):
-            existing = _read_lock()
-            raise Exit(f"{existing.get('type', 'Build').capitalize()} '{existing['level']}' is running. Only one operation at a time.")
-        _clear_lock()
-
         _ensure_container(ctx)
-        _run_in_container(
-            ctx,
-            f'cd {WORK_MOUNT} && kas build {_kas_args(level)}',
-            echo=True,
-            pty=False,
-        )
+        _write_lock(level, 0, "build")
+        try:
+            _run_in_container(
+                ctx,
+                f'cd {WORK_MOUNT} && kas build {_kas_args(level)}',
+                echo=True,
+                pty=False,
+            )
+        finally:
+            _clear_lock()
 
 
 def _show_tail(ctx, log_name, lines=10):
@@ -289,6 +288,7 @@ def build_stop(ctx, force=False, lines=10):
             f'"st=$(ps -p {pid} -o state= 2>/dev/null); '
             f'test -n \\\"$st\\\" && test \\\"$st\\\" != Z && echo alive || echo dead"',
             hide=True,
+            warn=True,
         )
         if "dead" in r.stdout:
             _clear_lock()
@@ -307,6 +307,7 @@ def build_stop(ctx, force=False, lines=10):
             f'"st=$(ps -p {pid} -o state= 2>/dev/null); '
             f'test -n \\\"$st\\\" && test \\\"$st\\\" != Z && echo alive || echo dead"',
             hide=True,
+            warn=True,
         )
         if "dead" in r.stdout:
             _clear_lock()
@@ -384,16 +385,17 @@ def _find_wic(level):
     """Find the correct wic.bz2 image for a level."""
     images_dir = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5"
     if level == "core":
-        pattern = "core-image-base-raspberrypi5.rootfs.wic.bz2"
+        basename = "core-image-base"
     else:
-        pattern = "core-image-weston-raspberrypi5.rootfs.wic.bz2"
+        basename = "core-image-weston"
+    pattern = f"{basename}-raspberrypi5.rootfs.wic.bz2"
     target = images_dir / pattern
     if target.exists():
         return target
-    matches = sorted(f for f in images_dir.glob(f"*raspberrypi5.rootfs.wic.bz2") if f.exists())
+    matches = sorted(f for f in images_dir.glob(f"{basename}-raspberrypi5.rootfs.wic.bz2") if f.exists())
     if matches:
         return matches[-1]
-    raise Exit(f"No .wic.bz2 found for level '{level}'. Run 'invoke build --{level}' first.")
+    raise Exit(f"No .wic.bz2 found for level '{level}'. Run 'invoke build-start --{level}' first.")
 
 
 def _check_removable(device):
@@ -436,6 +438,7 @@ def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=Fals
     if not force:
         _check_removable(device)
 
+    dev = shlex.quote(device)
     images_dir = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5"
     _clean_old_artifacts(images_dir)
 
@@ -449,7 +452,7 @@ def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=Fals
     print(f"{'='*60}\n")
 
     if nobmap or dd:
-        r = ctx.run(f"""pkexec bash -c 'bzcat {wic_abs} | dd of={device} bs=4M conv=fsync status=progress'""", warn=True)
+        r = ctx.run(f'pkexec bash -c "bzcat {wic_abs} | dd of={dev} bs=4M conv=fsync status=progress"', warn=True)
     else:
         raw = str(wic_abs).replace(".wic.bz2", ".wic")
         bmap = str(wic_abs).replace(".wic.bz2", ".bmap")
@@ -463,11 +466,11 @@ def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=Fals
 
         if r is None or r.ok:
             print(f"\nFlashing...")
-            r = ctx.run(f"pkexec $(which bmaptool) copy {wic_abs} {device}", warn=True)
+            r = ctx.run(f"pkexec $(which bmaptool) copy {wic_abs} {dev}", warn=True)
 
             if r and r.exited != 0:
                 print(f"\nbmaptool failed (exit {r.exited}), falling back to dd...")
-                r = ctx.run(f"""pkexec bash -c 'bzcat {wic_abs} | dd of={device} bs=4M conv=fsync status=progress'""", warn=True)
+                r = ctx.run(f'pkexec bash -c "bzcat {wic_abs} | dd of={dev} bs=4M conv=fsync status=progress"', warn=True)
 
     if r and r.exited != 0:
         print(f"\n{'!'*60}")
@@ -520,13 +523,16 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", all=False):
             print(f"  Removing {sstate_dir}/")
             ctx.run(f'rm -rf "{sstate_dir}"')
     if recipe:
-        print(f"  Cleaning sstate for recipe: {recipe}")
-        _ensure_image(ctx)
-        _run_in_container(
-            ctx,
-            f'cd {WORK_MOUNT} && bitbake -c cleansstate {shlex.quote(recipe)}',
-            echo=True,
-        )
+        if not build_dir.exists():
+            print(f"  Skipping recipe clean: build directory removed by --all")
+        else:
+            print(f"  Cleaning sstate for recipe: {recipe}")
+            _ensure_image(ctx)
+            _run_in_container(
+                ctx,
+                f'cd {WORK_MOUNT} && bitbake -c cleansstate {shlex.quote(recipe)}',
+                echo=True,
+            )
 
 
 @task(
