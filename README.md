@@ -1,6 +1,6 @@
-# Yokto - Raspberry Pi 5 Yocto Build
+# rpi5-ai-yokto: Raspberry Pi 5 Yocto Build with AI Support
 
-Kas-based Yocto build targeting Raspberry Pi 5 (scarthgap / 5.0.17) in a docker container.
+Kas-based Yocto build system targeting Raspberry Pi 5 (scarthgap / 5.0.17) with AI-assisted build processes, running in a Docker container. Contains multiple image levels with increasing functionality from headless to graphical applications.
 
 ## Prerequisites
 
