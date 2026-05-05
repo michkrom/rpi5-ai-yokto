@@ -14,8 +14,8 @@ PV = "3.0.1+git${SRCPV}"
 
 S = "${WORKDIR}/git"
 
-DEPENDS = "libsdl2 sdl-mixer libpng zlib"
-RDEPENDS:${PN} = "libsdl2 sdl-mixer libpng zlib python3-core"
+DEPENDS = "libsdl2 libsdl2-mixer libpng zlib"
+RDEPENDS:${PN} = "libsdl2 libsdl2-mixer libpng zlib python3-core"
 
 inherit autotools
 
