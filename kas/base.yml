@@ -73,9 +73,9 @@ local_conf_header:
         HALT,${SSTATE_DIR},100M,1K \
         HALT,/tmp,10M,1K"
   parallelism: |
-    # Limit to 20 threads max to prevent OOM crashes when compiling Chromium
-    BB_NUMBER_THREADS = "20"
-    PARALLEL_MAKE = "-j 20"
+    # Limit to 24 threads max to prevent OOM crashes when compiling Chromium
+    BB_NUMBER_THREADS = "24"
+    PARALLEL_MAKE = "-j 24"
   memory-management: |
     # Additional memory management for large compilations like Chromium
     BB_TASK_NICE_LEVEL = "5"
