@@ -89,13 +89,13 @@ def docker_init(ctx, no_cache=False):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "quake3": "Wayland + Quake3e",
+        "games": "Wayland + Quake3e",
         "update": "Force update of layer repos",
         "force": "Overwrite existing config files",
         "detach": "Run in background (for MCP)",
     }
 )
-def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, quake3=False, update=False, force=False, detach=False):
+def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, update=False, force=False, detach=False):
     """Fetch layers and write config (no build)."""
     _ensure_image(ctx)
     level = _validate(_level(core, wayland, weston, chrome, quake3))

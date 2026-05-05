@@ -7,13 +7,13 @@ IMAGE = "yokto"
 CONTAINER_NAME = "yocto-bg"
 CONTAINER_USER = "yocto"
 WORK_MOUNT = "/work"
-LEVELS = ("core", "wayland", "chrome", "quake3")
+LEVELS = ("core", "wayland", "chrome", "games")
 LOCK_FILE = ROOT / ".build-lock"
 
 
-def _level(core=False, wayland=False, weston=False, chrome=False, quake3=False):
-    if quake3:
-        return "quake3"
+def _level(core=False, wayland=False, weston=False, chrome=False, games=False):
+    if games:
+        return "games"
     if wayland or weston:
         return "wayland"
     if chrome:
