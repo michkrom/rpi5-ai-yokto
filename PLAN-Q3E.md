@@ -22,7 +22,7 @@ Build Quake3e (modern Quake 3 engine with Vulkan support) for Raspberry Pi 5 usi
 
 ## Build
 ```bash
-invoke build --quake3
+invoke build-start --games --detach
 ```
 
 ## Game Data

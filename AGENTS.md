@@ -80,7 +80,7 @@ Available tools include:
 1. **core** - Minimal headless system
 2. **wayland** - core + Weston compositor
 3. **chrome** - wayland + Chromium browser
-4. **quake3** - wayland + Quake3e game
+4. **games** - wayland + Quake3e game
 
 ### Project Structure
 ```
