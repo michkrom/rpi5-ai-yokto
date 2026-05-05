@@ -178,7 +178,7 @@ def build_start(level: str = "core", detach: bool = True, log: str = "") -> str:
     build_logs(level).
 
     Args:
-        level: Build level: core, wayland, chrome, or quake3.
+        level: Build level: core, wayland, chrome, or games.
         detach: Run in background (recommended for agents).
         log: Optional log file path (only used when detach=False).
     """

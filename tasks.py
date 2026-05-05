@@ -98,7 +98,7 @@ def docker_init(ctx, no_cache=False):
 def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, update=False, force=False, detach=False):
     """Fetch layers and write config (no build)."""
     _ensure_image(ctx)
-    level = _validate(_level(core, wayland, weston, chrome, quake3))
+    level = _validate(_level(core, wayland, weston, chrome, games))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -144,15 +144,15 @@ def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, g
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "quake3": "Wayland + Quake3e",
+        "games": "Wayland + Quake3e",
         "log": "Save build output to a file (e.g. build-chrome.log)",
         "detach": "Run in background (for MCP)",
     }
 )
-def build_start(ctx, core=False, wayland=False, weston=False, chrome=False, quake3=False, log=None, detach=False):
+def build_start(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, log=None, detach=False):
     """Checkout layers and build the image."""
     _ensure_image(ctx)
-    level = _validate(_level(core, wayland, weston, chrome, quake3))
+    level = _validate(_level(core, wayland, weston, chrome, games))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -332,13 +332,13 @@ def build_stop(ctx, force=False, lines=10):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "quake3": "Wayland + Quake3e",
+        "games": "Wayland + Quake3e",
     }
 )
-def shell(ctx, core=False, wayland=False, weston=False, chrome=False, quake3=False, command=""):
+def shell(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, command=""):
     """Open a shell with kas environment configured (sources checked out)."""
     _ensure_image(ctx)
-    level = _validate(_level(core, wayland, weston, chrome, quake3))
+    level = _validate(_level(core, wayland, weston, chrome, games))
     if command:
         _run_in_container(
             ctx,
@@ -463,15 +463,15 @@ def _check_removable(device):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "quake3": "Wayland + Quake3e",
+        "games": "Wayland + Quake3e",
         "force": "Skip removable drive check",
         "nobmap": "Skip bmap usage, use dd instead",
         "dd": "Use dd instead of bmaptool",
     }
 )
-def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=False, quake3=False, force=False, nobmap=False, dd=False):
+def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=False, games=False, force=False, nobmap=False, dd=False):
     """Flash the built image to an SD card. Runs on host for USB access."""
-    level = _validate(_level(core, wayland, weston, chrome, quake3))
+    level = _validate(_level(core, wayland, weston, chrome, games))
 
     if not device or not device.startswith("/dev/"):
         raise Exit(f"Device must be an absolute path like /dev/sdX, got: {device}")
@@ -582,12 +582,12 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", all=False):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "quake3": "Wayland + Quake3e",
+        "games": "Wayland + Quake3e",
     }
 )
-def build_rebuild(ctx, core=False, wayland=False, weston=False, chrome=False, quake3=False):
+def build_rebuild(ctx, core=False, wayland=False, weston=False, chrome=False, games=False):
     """Clean checkout layers + build output, then checkout and build."""
-    level = _validate(_level(core, wayland, weston, chrome, quake3))
+    level = _validate(_level(core, wayland, weston, chrome, games))
     print(f"\n{'='*60}\n  Clean rebuild: {level}\n{'='*60}")
     build_clean(ctx, layers=True)
     build_checkout(ctx, **{level: True})
