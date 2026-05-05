@@ -7,32 +7,26 @@ target:
 repos:
   meta-browser:
     url: https://github.com/OSSystems/meta-browser
-    refspec: 8413be0ef9e5e3ee3d07e5b2782e7918126c13da
+    refspec: 0dad36da5970315e53635b4b1c2013e1aec43a29
     path: layers/meta-browser
     layers:
       meta-chromium:
+
+  meta-clang:
+    url: https://github.com/kraj/meta-clang
+    refspec: 5c602337ea1a80fb7217eeda04e396cf90587dca
+    path: layers/meta-clang
+
   meta-openembedded:
     url: https://github.com/openembedded/meta-openembedded
     refspec: scarthgap
     path: layers/meta-openembedded
     layers:
       meta-oe:
-  meta-clang:
-    url: https://github.com/kraj/meta-clang
-    refspec: scarthgap-clang20
-    path: layers/meta-clang
-  rust-mixin:
-    path: layers/meta-rust-mixin
 
 local_conf_header:
-  wayland: |
-    DISTRO_FEATURES:append = " wayland pam"
-    DISTRO_FEATURES:remove = " x11"
   chrome: |
-    CORE_IMAGE_EXTRA_INSTALL += "chromium-ozone-wayland"
-  skip-qa: |
-    INSANE_SKIP:cairo += "file-rdeps"
-    INSANE_SKIP:glib-2.0 += "file-rdeps"
-    INSANE_SKIP:weston += "file-rdeps"
-    INSANE_SKIP:weston-examples += "file-rdeps"
-    INSANE_SKIP:libweston-13 += "file-rdeps"
+    DISTRO_FEATURES:append = " wayland pam vulkan"
+    DISTRO_FEATURES:remove = " x11"
+    IMAGE_INSTALL:append = " chromium-ozone-wayland"
+    IMAGE_INSTALL:append = " mesa-vulkan-drivers"

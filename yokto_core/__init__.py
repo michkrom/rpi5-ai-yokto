@@ -70,7 +70,7 @@ def _lock_alive(runner, lock):
         return False
     pid = lock.get("pid", 0)
     if not pid:
-        return True  # checkout has no PID, assume alive if lock exists
+        return False  # No PID means non-detached or finished operation
     # Check if process exists AND is not a zombie (state Z)
     cmd = (
         f"docker exec {CONTAINER_NAME} bash -c "

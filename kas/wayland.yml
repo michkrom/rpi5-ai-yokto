@@ -6,7 +6,7 @@ target:
 
 local_conf_header:
   wayland: |
-    DISTRO_FEATURES:append = " wayland pam"
+    DISTRO_FEATURES:append = " wayland pam vulkan"
     DISTRO_FEATURES:remove = " x11"
     CORE_IMAGE_EXTRA_INSTALL += "weston-examples"
   skip-qa: |

@@ -229,6 +229,8 @@ def build_status(ctx, lines=10):
     else:
         print(f"{op_type.capitalize()} '{level}' has finished.")
         _show_tail(ctx, f"{op_type}-{level}.log", lines)
+        _clear_lock()
+        print("Lock cleared.")
 
 
 @task(help={"lines": "Number of trailing log lines to show"})
