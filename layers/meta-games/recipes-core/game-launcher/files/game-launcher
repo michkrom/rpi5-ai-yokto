@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""
+Yokto Game Launcher - Simple TUI for game selection
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+TITLE = "Yokto Game Launcher"
+
+def run_cmd(cmd):
+    return subprocess.run(cmd, shell=True).returncode
+
+def download_q3e_data():
+    """Download Quake 3 demo data using q3e-data-check"""
+    if Path("/usr/bin/q3e-data-check").exists():
+        run_cmd("q3e-data-check")
+    else:
+        print("q3e-data-check not found")
+
+def download_doom_data():
+    """Download Freedoom WAD files"""
+    import urllib.request
+    
+    DOOM_DIR = Path("/usr/share/doom")
+    DOOM_DIR.mkdir(parents=True, exist_ok=True)
+    
+    url = "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip"
+    
+    # Check if already downloaded
+    if (DOOM_DIR / "freedoom1.wad").exists():
+        print("Freedoom already installed")
+        return
+    
+    print("Downloading Freedoom (Doom assets)...")
+    print("This will download ~27MB of game data.")
+    
+    try:
+        # Download to temp
+        import tempfile
+        import zipfile
+        import shutil
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = Path(tmpdir) / "freedoom.zip"
+            urllib.request.urlretrieve(url, zip_path)
+            with zipfile.ZipFile(zip_path) as zf:
+                for name in ["freedoom1.wad", "freedoom2.wad"]:
+                    data = zf.read(f"freedoom-0.13.0/{name}")
+                    (DOOM_DIR / name).write_bytes(data)
+                    print(f"  extracted {name}")
+        
+        print("Freedoom installed successfully!")
+    except Exception as e:
+        print(f"Download failed: {e}")
+
+def launch_q3e():
+    """Launch Quake3e"""
+    if Path("/usr/bin/quake3e").exists():
+        # Check for data
+        q3_dir = Path("/usr/share/q3e/baseq3")
+        if not list(q3_dir.glob("*.pk3")):
+            print("No Quake 3 data found. Run data download first.")
+            return
+        os.execvp("quake3e", ["quake3e"])
+    else:
+        print("quake3e not installed")
+
+def launch_doom():
+    """Launch Chocolate Doom"""
+    if Path("/usr/bin/chocolate-doom").exists():
+        # Check for WAD
+        doom_dir = Path("/usr/share/doom")
+        wads = ["doom.wad", "doom2.wad", "freedoom1.wad", "freedoom2.wad"]
+        found = [w for w in wads if (doom_dir / w).exists()]
+        if not found:
+            print("No Doom WAD files found. Run data download first.")
+            return
+        os.execvp("chocolate-doom", ["chocolate-doom"])
+    else:
+        print("chocolate-doom not installed")
+
+def main_menu():
+    """Main menu using dialog/whiptail"""
+    while True:
+        menu = f"""
+1) Launch Quake III Arena (q3e)
+2) Launch Doom (chocolate-doom)
+3) Download Quake 3 demo data
+4) Download Freedoom data (free Doom assets)
+5) Exit
+"""
+        print(f"\n{TITLE}")
+        print(menu)
+        
+        try:
+            choice = input("Select option: ").strip()
+        except EOFError:
+            break
+        
+        if choice == "1":
+            launch_q3e()
+        elif choice == "2":
+            launch_doom()
+        elif choice == "3":
+            download_q3e_data()
+        elif choice == "4":
+            download_doom_data()
+        elif choice == "5":
+            print("Goodbye!")
+            break
+        else:
+            print("Invalid option")
+
+if __name__ == "__main__":
+    main_menu()

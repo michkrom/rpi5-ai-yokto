@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Yokto Game Launcher
+Comment=Select and launch games
+Exec=game-launcher
+Icon=applications-games
+Categories=Game;
+Terminal=true
+StartupNotify=true

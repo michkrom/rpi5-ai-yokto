@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+DOOM_DIR = Path("/usr/share/doom")
+WAD_FILES = ["doom.wad", "doom2.wad", "freedoom1.wad", "freedoom2.wad"]
+LOG = Path("/tmp/chocolate-doom-data-check.log")
+
+
+def log(msg):
+    with open(LOG, "a") as f:
+        f.write(msg + "\n")
+    print(msg)
+
+
+def main():
+    DOOM_DIR.mkdir(parents=True, exist_ok=True)
+    found = []
+    for wad in WAD_FILES:
+        if (DOOM_DIR / wad).exists():
+            found.append(wad)
+    
+    if found:
+        log(f"Chocolate Doom: Found WAD files: {', '.join(found)}")
+        log(f"Copy your commercial WADs to {DOOM_DIR} for full game")
+    else:
+        log("Chocolate Doom: No WAD files found.")
+        log(f"Copy doom.wad, doom2.wad, or freedoom WADs to {DOOM_DIR}")
+        log("Freedoom is free and can be downloaded from https://freedoom.github.io/")
+
+
+if __name__ == "__main__":
+    main()

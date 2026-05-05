@@ -16,9 +16,11 @@ This project includes AI agent tools built with [PI](https://github.com/badlogic
 | **core** | Minimal headless image |
 | **wayland** | core + Wayland desktop + Weston compositor |
 | **chrome**  | wayland + Chromium browser |
-| **quake3**  | wayland + Quake3e (Vulkan Quake 3 engine) |
+| **games**  | wayland + Quake3e + Chocolate Doom (gaming engines) |
 
-Each level builds upon the previous one, adding more functionality. The core level provides a minimal system, wayland adds a graphical desktop environment, chrome includes a web browser, and quake3 adds a gaming engine.
+Each level builds upon the previous one, adding more functionality. The core level provides a minimal system, wayland adds a graphical desktop environment, chrome includes a web browser, and games adds multiple gaming engines.
+
+> **Warning:** The Chrome level build can take several hours to days. It requires building Chromium from source, which needs Rust, Clang, and the full Chromium codebase - a process requiring significant time and disk space (~100GB+).
 
 ## Usage
 
@@ -41,6 +43,7 @@ invoke build-checkout --force            # Overwrite existing config
 invoke build-start --chrome --detach       # Chrome level (background)
 invoke build-start --wayland               # Wayland level (foreground)
 invoke build-start --core --detach         # Core level (background)
+invoke build-start --games --detach        # Games level (background)
 
 # Monitor detached builds
 invoke build-status                        # Check running status
@@ -55,7 +58,7 @@ invoke shell --chrome --command "bitbake -c listtasks core-image-weston"
 # Flash to SD card
 invoke flash --device /dev/sdb --chrome    # Flash chrome image
 invoke flash --device /dev/sdb --wayland   # Flash wayland image
-invoke flash --device /dev/sdb --quake3    # Flash quake3 image
+invoke flash --device /dev/sdb --games     # Flash games image
 invoke flash --device /dev/sdb --force     # Skip removable drive check
 
 # List built images
@@ -88,7 +91,7 @@ When using `--detach`, build logs are saved to:
 - `build-core.log`
 - `build-wayland.log`
 - `build-chrome.log`
-- `build-quake3.log`
+- `build-games.log`
 
 ## Project Structure
 
@@ -102,11 +105,12 @@ yokto/
 │   ├── core.yml            # → core-image-base
 │   ├── wayland.yml         # → core-image-weston + Wayland
 │   ├── chrome.yml          # → core-image-weston + Chromium
-│   └── quake3.yml          # → core-image-weston + Quake3e
+│   └── games.yml           # → core-image-weston + Games
 ├── layers/                   # Gitignored wholesale. Kas clones layers here.
 │   ├── poky/                   # OE-Core (cloned by kas)
 │   ├── meta-raspberrypi/       # RPi BSP (cloned by kas)
-│   └── meta-quake3/            # Custom layer: Quake3e recipe
+│   ├── meta-games/             # Custom layer: Game recipes
+│   └── meta-doom/              # Custom layer: Chocolate Doom recipe
 ├── build/                    # Build output (gitignored)
 │   └── deploy/images/raspberrypi5/
 └── .pi/
@@ -118,7 +122,12 @@ yokto/
 Kas clones layers into `layers/` (gitignored wholesale). To add custom layers,
 place them in `layers/` and reference them in `kas/base.yml` under `repos`.
 
-The `meta-quake3` layer serves as a practical example of how to create and integrate your own custom layers.
+The `meta-games` layer contains:
+- Quake3e recipe (`recipes-games/q3e/`)
+- Game launcher TUI (`recipes-core/game-launcher/`)
+
+The `meta-doom` layer contains:
+- Chocolate Doom recipe (`recipes-games/chocolate-doom/`)
 
 ## Configuration
 
@@ -139,19 +148,32 @@ The `meta-quake3` layer serves as a practical example of how to create and integ
 ### Chrome level adds
 - `CORE_IMAGE_EXTRA_INSTALL += "chromium-ozone-wayland"`
 
-### Quake3 level adds
-- `CORE_IMAGE_EXTRA_INSTALL += "q3e"` — Quake3e engine (Vulkan renderer)
+### Games level adds
+- `CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher"` — Gaming engines and launcher
 
-## meta-quake3 Layer (Custom)
+## meta-games and meta-doom Layers (Custom)
 
-The `layers/meta-quake3/` layer contains a recipe for **Quake3e** — a modern Quake III Arena engine with Vulkan support.
+The `layers/meta-games/` layer contains:
 
-- Recipe: `recipes-games/q3e/q3e_git.bb` — builds from `github.com/ec-/Quake3e.git` with `USE_VULKAN=ON`, `USE_OPENGL=OFF`
+**Game Launcher** (`recipes-core/game-launcher/`):
+- Simple text-based UI for game selection and data download
+- Autostarts on Weston desktop login
+- Offers to download Quake 3 demo data or Freedoom (free Doom assets)
+
+**Quake3e** (`recipes-games/q3e/`):
+- Modern Quake III Arena engine with Vulkan support
+- Recipe: `q3e_git.bb` — builds from `github.com/ec-/Quake3e.git`
 - Build deps: `libsdl2`, `curl`, `vulkan-loader`
-- Installs `quake3e` (engine), `quake3e.ded` (dedicated server), and a `q3e-data-check` Python utility
-- Integrates with Weston via autostart script at `/etc/xdg/weston/startup/q3e-data-check.sh` — checks for game data (`pak*.pk3` files) on boot
-- Game data directory: `/usr/share/q3e/baseq3/` (world-writable)
-- Includes a `.desktop` file for launching from the Weston desktop
+- Installs `quake3e`, `quake3e.ded`, and `q3e-data-check` utility
+
+The `layers/meta-doom/` layer contains:
+
+**Chocolate Doom** (`recipes-games/chocolate-doom/`):
+- Historically accurate Doom source port
+- Recipe: `chocolate-doom_git.bb`
+- Supports Doom, Doom 2, Heretic, and Hexen
+- Build deps: `libsdl2`, `sdl-mixer`, `libpng`, `zlib`
+- Ready for Freedoom WAD files (downloadable via launcher)
 
 ## Build Output
 

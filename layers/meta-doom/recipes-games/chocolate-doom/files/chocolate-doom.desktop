@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Chocolate Doom
+Comment=Historically accurate Doom source port
+Exec=chocolate-doom
+Icon=chocolate-doom
+Categories=Game;
+StartupNotify=true

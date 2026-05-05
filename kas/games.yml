@@ -7,13 +7,23 @@ target:
 repos:
   meta-quake3:
     path: layers/meta-quake3
+  meta-doom:
+    path: layers/meta-doom
+  meta-games:
+    path: layers/meta-games
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded
+    refspec: scarthgap
+    path: layers/meta-openembedded
+    layers:
+      meta-oe:
 
 local_conf_header:
   wayland: |
     DISTRO_FEATURES:append = " wayland pam"
     DISTRO_FEATURES:remove = " x11"
-  quake3: |
-    CORE_IMAGE_EXTRA_INSTALL += "q3e"
+  games: |
+    CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher"
   rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "2097152"
   skip-qa: |

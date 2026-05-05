@@ -1,6 +1,8 @@
 # kas checkout output (downloaded layers)
 layers/*
 !layers/meta-quake3/
+!layers/meta-doom/
+!layers/meta-games/
 
 # kas build output (downloads, tmp, sstate, etc.)
 build/
