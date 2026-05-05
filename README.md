@@ -23,44 +23,72 @@ Each level builds upon the previous one, adding more functionality. The core lev
 ## Usage
 
 ```bash
+# Quick shortcuts (in this directory)
+./doksh <cmd>   # Run command in container, or interactive shell if no args
+./doksh         # Start interactive shell in container
+
 # Build container (one-time)
 invoke docker-init
 invoke docker-init --no-cache   # Force rebuild
 
-# Checkout + build
-invoke build                    # core (default)
-invoke build --wayland
-invoke build --chrome
-invoke build --quake3
+# Checkout Yocto layers (no build)
+invoke build-checkout --chrome --detach    # For Chrome level (background)
+invoke build-checkout --wayland            # Wayland level (foreground)
+invoke build-checkout --core --update      # Force update layers
+invoke build-checkout --force            # Overwrite existing config
 
-# Checkout only (no build)
-invoke checkout
-invoke checkout --update --force
+# Build image (detached mode recommended)
+invoke build-start --chrome --detach       # Chrome level (background)
+invoke build-start --wayland               # Wayland level (foreground)
+invoke build-start --core --detach         # Core level (background)
 
-# Interactive shell (sources checked out)
-invoke shell
-invoke docker-shell             # Plain docker bash
+# Monitor detached builds
+invoke build-status                        # Check running status
+invoke build-last                          # Show recent log output
+invoke build-stop                          # Stop running build
+
+# Interactive shell with kas environment
+invoke shell                               # Default (core level)
+invoke shell --wayland                     # Wayland level environment
+invoke shell --chrome --command "bitbake -c listtasks core-image-weston"
 
 # Flash to SD card
-invoke flash --device /dev/sdb
-invoke flash --device /dev/sdb --wayland
-invoke flash --device /dev/sdb --quake3
-invoke flash --device /dev/sdb --force   # Skip removable check
+invoke flash --device /dev/sdb --chrome    # Flash chrome image
+invoke flash --device /dev/sdb --wayland   # Flash wayland image
+invoke flash --device /dev/sdb --quake3    # Flash quake3 image
+invoke flash --device /dev/sdb --force     # Skip removable drive check
 
 # List built images
 invoke images
 
-# Remove container + image
+# Container management
+invoke container-status     # Check image/container status
+invoke container-start      # Start background container
+invoke container-stop       # Stop container
+invoke container-shell      # Interactive shell (no kas setup)
+invoke container-exec --command "ls -la"  # Run command in container
+
+# Clean build artifacts
+invoke build-clean                        # Remove build output (keeps downloads/sstate)
+invoke build-clean --layers               # Also remove kas-cloned layers
+invoke build-clean --sstate               # Also remove sstate cache
+invoke build-clean --recipe=chromium      # Clean specific recipe from sstate
+invoke build-clean --all                  # Remove everything
+
+# Full rebuild (clean layers + build)
+invoke build-rebuild --chrome             # Clean rebuild chrome level
+
+# Remove Docker image and containers
 invoke docker-purge
-
-# Remove build output + kas-cloned layers (preserves downloads/sstate)
-invoke clean
-invoke clean --all   # Also wipe downloads/ and sstate-cache/
-
-# Clean + checkout + build (preserves downloads/sstate)
-invoke rebuild
-invoke rebuild --wayland
 ```
+
+### Detached Build Output
+
+When using `--detach`, build logs are saved to:
+- `build-core.log`
+- `build-wayland.log`
+- `build-chrome.log`
+- `build-quake3.log`
 
 ## Project Structure
 
@@ -73,14 +101,16 @@ yokto/
 │   ├── base.yml            # RPi5 + scarthgap + shared config
 │   ├── core.yml            # → core-image-base
 │   ├── wayland.yml         # → core-image-weston + Wayland
-│       ├── chrome.yml          # → core-image-weston + Chromium
-    └── quake3.yml          # → core-image-weston + Quake3e
+│   ├── chrome.yml          # → core-image-weston + Chromium
+│   └── quake3.yml          # → core-image-weston + Quake3e
 ├── layers/                   # Gitignored wholesale. Kas clones layers here.
 │   ├── poky/                   # OE-Core (cloned by kas)
-│       ├── meta-raspberrypi/       # RPi BSP (cloned by kas)
-    └── meta-quake3/            # Custom layer: Quake3e recipe
-├── build/                  # Build output (gitignored)
-    └── deploy/images/raspberrypi5/
+│   ├── meta-raspberrypi/       # RPi BSP (cloned by kas)
+│   └── meta-quake3/            # Custom layer: Quake3e recipe
+├── build/                    # Build output (gitignored)
+│   └── deploy/images/raspberrypi5/
+└── .pi/
+    └── extensions/invoke/    # PI extension with invoke-based tools
 ```
 
 ## Layers
@@ -138,8 +168,45 @@ build/deploy/images/raspberrypi5/
 
 This project includes AI agent capabilities through:
 
-- **MCP Server Tools**: Exposes build system functionality through standardized Model Context Protocol tools
-- **PI Extension**: Custom tools for Yocto operations that can be discovered by AI agents
-- **Agent Guidance**: See [AGENTS.md](AGENTS.md) for detailed information on using AI-assisted build processes
+### MCP (Model Context Protocol) Tools
 
-The agent can automatically discover tools like `yocto_build_start`, `yocto_build_logs`, and others to intelligently automate and troubleshoot the build process.
+The build system exposes functionality through MCP tools that can be discovered by AI agents. These tools are thin wrappers around `invoke` tasks, ensuring a single source of truth.
+
+**Container Tools:**
+- `invoke_docker_init` — Build the yokto Docker container
+- `invoke_container_status` — Check image/container status
+- `invoke_container_start` — Start background container
+- `invoke_container_stop` — Stop container
+- `invoke_container_shell` — Interactive shell (no kas setup)
+- `invoke_container_exec` — Run command in container
+- `invoke_docker_purge` — Remove image and containers
+
+**Build Tools:**
+- `invoke_build_checkout` — Fetch/update layers (supports `--detach` for background)
+- `invoke_build_start` — Build image (supports `--detach` for background builds)
+- `invoke_build_stop` — Stop running build
+- `invoke_build_status` — Check running status + tail logs
+- `invoke_build_last` — Show recent build result
+- `invoke_shell` — Run command in kas shell or open interactive shell
+- `invoke_build_clean` — Remove build artifacts
+- `invoke_build_rebuild` — Clean rebuild from scratch
+- `invoke_images` — List built images
+- `invoke_flash` — Flash image to SD card
+
+**Target Device Tools (SSH to RPi5):**
+- `invoke_target_connect` — Connect to RPi5 via SSH
+- `invoke_target_disconnect` — Disconnect from target
+- `invoke_target_status` — Show connection status
+- `invoke_target_exec` — Run command via SSH
+- `invoke_target_sudo` — Run command with sudo via SSH
+- `invoke_target_copy` — Copy files via SCP
+- `invoke_target_docker` — Run docker commands on target
+
+### PI Extension
+
+The `.pi/extensions/invoke/` directory contains a PI extension that auto-discovers and registers all invoke-based tools. The extension provides:
+
+- Tool name matching: `invoke_<task-name>` (e.g., `invoke_build_start` maps to `build-start`)
+- Full parameter support with TypeScript types
+- Prompt snippets and guidelines for `invoke_build_start` to guide AI agents
+- Target device state management via environment variables

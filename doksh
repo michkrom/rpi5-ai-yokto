@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# doksh - Run command in yokto container, or start interactive shell if no args
+# Usage: 
+#   ./doksh              # Interactive shell
+#   ./doksh ls -la       # Run command in container
+
+set -e
+
+CONTAINER=${YOKTO_CONTAINER:-yocto-bg}
+USER=${YOKTO_USER:-yokto}
+IMAGE=${YOKTO_IMAGE:-yokto}
+
+# Check if container is running, start if not
+if ! docker ps -q --filter name="^${CONTAINER}$" | grep -q .; then
+    # Check if image exists first
+    if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+        echo "Image not found, building..." >&2
+        invoke docker-init >/dev/null
+    fi
+    echo "Container not running, starting..." >&2
+    invoke container-start >/dev/null
+fi
+
+# If no arguments, start interactive shell
+if [ $# -eq 0 ]; then
+    docker exec -u "$USER" -it "$CONTAINER" bash
+else
+    docker exec -u "$USER" "$CONTAINER" bash -lc "$*"
+fi
