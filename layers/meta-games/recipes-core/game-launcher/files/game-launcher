@@ -166,7 +166,10 @@ def launch_doom():
         if not found:
             print("No Doom WAD files found. Run data download first.")
             return
-        os.execvp("chocolate-doom", ["chocolate-doom"])
+        # Set Wayland SDL driver and launch
+        env = os.environ.copy()
+        env["SDL_VIDEODRIVER"] = "wayland"
+        os.execvpe("chocolate-doom", ["chocolate-doom"], env)
     else:
         print("chocolate-doom not installed")
 

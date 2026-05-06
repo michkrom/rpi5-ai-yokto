@@ -26,6 +26,8 @@ local_conf_header:
     DISTRO_FEATURES:remove = " x11"
   games: |
     CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher"
+    # Warfork disabled - EGL/OpenGL issues
+    # CORE_IMAGE_EXTRA_INSTALL += "warfork warfork-assets"
   rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "2097152"
   skip-qa: |

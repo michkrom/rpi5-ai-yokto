@@ -19,9 +19,6 @@ S = "${WORKDIR}/git"
 DEPENDS = "libsdl2 libpng zlib mesa"
 RDEPENDS:${PN} = "libsdl2 libpng zlib mesa python3-core"
 
-# Use Wayland SDL video driver explicitly
-export SDL_VIDEODRIVER = "wayland"
-
 inherit cmake
 
 EXTRA_OECMAKE = " \
