@@ -89,7 +89,7 @@ def docker_init(ctx, no_cache=False):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + Quake3e",
+        "games": "Wayland + games (quake3, doom, warfork)",
         "update": "Force update of layer repos",
         "force": "Overwrite existing config files",
         "detach": "Run in background (for MCP)",
@@ -144,7 +144,7 @@ def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, g
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + Quake3e",
+        "games": "Wayland + games (quake3, doom, warfork)",
         "log": "Save build output to a file (e.g. build-chrome.log)",
         "detach": "Run in background (for MCP)",
     }
@@ -332,7 +332,7 @@ def build_stop(ctx, force=False, lines=10):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + Quake3e",
+        "games": "Wayland + games (quake3, doom, warfork)",
     }
 )
 def shell(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, command=""):
@@ -363,9 +363,6 @@ def container_shell(ctx):
         f'docker exec -u {CONTAINER_USER} -it {CONTAINER_NAME} bash',
         pty=False,
     )
-
-
-docker_shell = container_shell  # backward compat alias
 
 
 @task
@@ -463,7 +460,7 @@ def _check_removable(device):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + Quake3e",
+        "games": "Wayland + games (quake3, doom, warfork)",
         "force": "Skip removable drive check",
         "nobmap": "Skip bmap usage, use dd instead",
         "dd": "Use dd instead of bmaptool",
@@ -582,7 +579,7 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", all=False):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + Quake3e",
+        "games": "Wayland + games (quake3, doom, warfork)",
     }
 )
 def build_rebuild(ctx, core=False, wayland=False, weston=False, chrome=False, games=False):
