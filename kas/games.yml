@@ -17,6 +17,8 @@ repos:
     path: layers/meta-openembedded
     layers:
       meta-oe:
+      meta-multimedia:
+      meta-python:
 
 local_conf_header:
   wayland: |

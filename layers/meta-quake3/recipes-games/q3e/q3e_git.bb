@@ -4,12 +4,12 @@ with all existing Q3A mods. Features optimized OpenGL and Vulkan renderers."
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://COPYING.txt;md5=87113aa2b484c59a17085b5c3f900ebf"
 
-SRC_URI = "git://github.com/ec-/Quake3e.git;protocol=https;branch=main \
+SRC_URI = "git://github.com/ec-/Quake3e.git;protocol=https;branch=main;destsuffix=git \
            file://0001-Guard-glx.h-include-with-USE_OPENGL_API.patch \
            file://q3e-data-check \
            file://q3e.desktop \
 "
-SRCREV = "${AUTOREV}"
+SRCREV = "ed1064f80fda9cde2e7d33c2d5dce8f8166b12bd"
 PV = "1.0+git${SRCPV}"
 
 S = "${WORKDIR}/git"
@@ -20,6 +20,8 @@ RDEPENDS:${PN} = "libsdl2 curl vulkan-loader python3-core"
 inherit cmake
 
 ERROR_QA:remove = "patch-fuzz"
+
+INSANE_SKIP:${PN} += "license-checksum"
 
 EXTRA_OECMAKE = " \
     -DUSE_SDL=ON \

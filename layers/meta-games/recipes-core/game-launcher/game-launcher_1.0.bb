@@ -1,12 +1,11 @@
 SUMMARY = "Yokto Game Launcher - Simple TUI for game selection"
 DESCRIPTION = "A lightweight text-based UI to launch games and download game data"
 LICENSE = "MIT"
-LIC_FILES_CHKSUM = "file://COPYING;md5=87113aa2b484c59a17085b5c3f900ebf"
+LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 SRC_URI = "file://game-launcher \
            file://game-launcher.desktop \
            file://game-launcher-autostart.sh \
-           file://COPYING \
 "
 
 S = "${WORKDIR}"
