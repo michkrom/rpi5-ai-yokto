@@ -16,8 +16,11 @@ PV = "3.0.1+git${SRCPV}"
 
 S = "${WORKDIR}/git"
 
-DEPENDS = "libsdl2 libpng zlib"
-RDEPENDS:${PN} = "libsdl2 libpng zlib python3-core"
+DEPENDS = "libsdl2 libpng zlib mesa"
+RDEPENDS:${PN} = "libsdl2 libpng zlib mesa python3-core"
+
+# Use Wayland SDL video driver explicitly
+export SDL_VIDEODRIVER = "wayland"
 
 inherit cmake
 
