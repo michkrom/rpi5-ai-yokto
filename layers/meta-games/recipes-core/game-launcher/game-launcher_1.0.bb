@@ -5,7 +5,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = "file://game-launcher \
            file://game-launcher.desktop \
-           file://game-launcher-autostart.sh \
+           file://game-launcher-autostart.desktop \
+           file://game-launcher.service \
 "
 
 S = "${WORKDIR}"
@@ -17,9 +18,12 @@ do_install() {
     install -m 0755 ${WORKDIR}/game-launcher ${D}${bindir}/
     install -d ${D}${datadir}/applications
     install -m 0644 ${WORKDIR}/game-launcher.desktop ${D}${datadir}/applications/
-    install -d ${D}${sysconfdir}/xdg/weston/startup
-    install -m 0755 ${WORKDIR}/game-launcher-autostart.sh ${D}${sysconfdir}/xdg/weston/startup/game-launcher.sh
+    install -d ${D}${datadir}/autostart
+    install -m 0644 ${WORKDIR}/game-launcher-autostart.desktop ${D}${datadir}/autostart/
+    # Install systemd service for user session
+    install -d ${D}${systemd_user_unitdir}
+    install -m 0644 ${WORKDIR}/game-launcher.service ${D}${systemd_user_unitdir}/
 }
 
 FILES:${PN} = "${bindir}/game-launcher ${datadir}/applications/game-launcher.desktop"
-FILES:${PN} += "${sysconfdir}/xdg/weston/startup/game-launcher.sh"
+FILES:${PN} += "${datadir}/autostart/game-launcher-autostart.desktop ${systemd_user_unitdir}/game-launcher.service"

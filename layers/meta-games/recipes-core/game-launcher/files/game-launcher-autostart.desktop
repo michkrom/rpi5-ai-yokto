@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Yokto Game Launcher
+Comment=Game selection and data download tool
+Exec=game-launcher
+Icon=applications-games
+Terminal=true
+Type=Application
+Categories=Game;
+X-GNOME-Autostart-enabled=true
+Hidden=false
