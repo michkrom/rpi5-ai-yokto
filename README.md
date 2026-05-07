@@ -151,6 +151,8 @@ The `meta-doom` layer contains:
 ### Games level adds
 - `CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher"` — Gaming engines and launcher
 
+**Note:** Warfork support is planned but not yet building successfully due to EGL/OpenGL issues. The recipe is commented out in `kas/games.yml`.
+
 ## meta-games and meta-doom Layers (Custom)
 
 The `layers/meta-games/` layer contains:
