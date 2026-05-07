@@ -16,8 +16,8 @@ PV = "3.0.1+git${SRCPV}"
 
 S = "${WORKDIR}/git"
 
-DEPENDS = "libsdl2 libpng zlib mesa"
-RDEPENDS:${PN} = "libsdl2 libpng zlib mesa python3-core"
+DEPENDS = "libsdl2 libpng zlib mesa wayland"
+RDEPENDS:${PN} = "libsdl2 libpng zlib mesa wayland python3-core"
 
 inherit cmake
 

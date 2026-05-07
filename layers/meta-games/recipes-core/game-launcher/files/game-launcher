@@ -17,15 +17,27 @@ ARCHIVE_URL = "https://archive.org/download/warfork-qfusion-master/warfork-asset
 ZIP_FILENAME = "warfork-assets-cc0-master.zip"
 EXTRACT_DIR = "warfork-assets-cc0-master"
 
-def run_cmd(cmd):
-    return subprocess.run(cmd, shell=True).returncode
+def run_cmd(cmd, show_output=True):
+    """Run a shell command and optionally show output"""
+    if show_output:
+        print(f"  Running: {cmd}")
+    result = subprocess.run(cmd, shell=True, capture_output=show_output, text=show_output)
+    if show_output and result.stdout:
+        print(result.stdout.rstrip())
+    if show_output and result.stderr:
+        print(result.stderr.rstrip())
+    return result.returncode
 
 def download_q3e_data():
     """Download Quake 3 demo data using q3e-data-check"""
     if Path("/usr/bin/q3e-data-check").exists():
-        run_cmd("q3e-data-check")
+        print("Running q3e-data-check to download Quake 3 demo data...")
+        print("-" * 40)
+        run_cmd("q3e-data-check", show_output=True)
+        print("-" * 40)
+        print("Quake 3 demo data download complete.")
     else:
-        print("q3e-data-check not found")
+        print("q3e-data-check not found - Quake 3 data tool not installed")
 
 def download_doom_data():
     """Download Freedoom WAD files"""
@@ -39,20 +51,34 @@ def download_doom_data():
         print("Freedoom already installed")
         return
     
-    print("Downloading Freedoom (Doom assets)...")
+    print("=" * 50)
+    print("Downloading Freedoom (free Doom assets)")
+    print("=" * 50)
+    print(f"Source: {url}")
     print("This will download ~27MB of game data.")
+    print()
     
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = Path(tmpdir) / "freedoom.zip"
+            print(f"Downloading to {zip_path}...")
             urllib.request.urlretrieve(url, zip_path)
+            print(f"Downloaded: {zip_path.stat().st_size // 1024} KB")
+            print()
+            print("Extracting...")
             with zipfile.ZipFile(zip_path) as zf:
+                namelist = zf.namelist()
+                print(f"  Archive contains {len(namelist)} files")
                 for name in ["freedoom1.wad", "freedoom2.wad"]:
                     data = zf.read(f"freedoom-0.13.0/{name}")
                     (DOOM_DIR / name).write_bytes(data)
-                    print(f"  extracted {name}")
+                    print(f"  extracted {name} ({len(data) // 1024} KB)")
         
+        print()
+        print("=" * 50)
         print("Freedoom installed successfully!")
+        print(f"Location: {DOOM_DIR}")
+        print("=" * 50)
     except Exception as e:
         print(f"Download failed: {e}")
 
@@ -64,25 +90,27 @@ def download_warfork_cc0_assets():
     print("=" * 50)
     print("Warfork CC0 Assets Downloader")
     print("=" * 50)
+    print(f"Source: {ARCHIVE_URL}")
+    print()
     
     # Check if package assets already exist
     if (WF_DIR / "basewf" / "textures").exists():
         print("Warfork free textures already installed via warfork-assets package.")
     
     # Download the archive
-    print(f"Downloading {ARCHIVE_URL}...")
+    print(f"Downloading {ZIP_FILENAME}...")
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = Path(tmpdir) / ZIP_FILENAME
             urllib.request.urlretrieve(ARCHIVE_URL, zip_path)
-            print(f"Downloaded: {ZIP_FILENAME}")
-            
-            # Extract
-            print("Extracting CC0 assets...")
+            print(f"Downloaded: {zip_path.stat().st_size // 1024} KB")
+            print()
+            print("Extracting...")
             with zipfile.ZipFile(zip_path, 'r') as zf:
                 zf.extractall(tmpdir)
             
             src_dir = Path(tmpdir) / EXTRACT_DIR
+            print(f"Extracted to: {src_dir}")
             
             # Copy sounds to basewf
             src_sounds = src_dir / "sounds"
@@ -102,7 +130,10 @@ def download_warfork_cc0_assets():
             else:
                 print("No sounds directory found in archive.")
             
-        print("\nCC0 assets integrated successfully!")
+        print()
+        print("=" * 50)
+        print("CC0 assets integrated successfully!")
+        print("=" * 50)
         return True
     except Exception as e:
         print(f"Download/extract failed: {e}")
@@ -168,7 +199,12 @@ def launch_doom():
             return
         # Set Wayland SDL driver and launch
         env = os.environ.copy()
-        env["SDL_VIDEODRIVER"] = "wayland"
+        env["SDL_VIDEODRIVER"] = "wayland"  # or try "wl" if wayland doesn't work
+        if "WAYLAND_DISPLAY" in os.environ:
+            env["WAYLAND_DISPLAY"] = os.environ["WAYLAND_DISPLAY"]
+        print(f"Launching chocolate-doom...")
+        print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
+        print(f"  WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY', 'not set')}")
         os.execvpe("chocolate-doom", ["chocolate-doom"], env)
     else:
         print("chocolate-doom not installed")
