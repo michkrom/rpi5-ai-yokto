@@ -6,6 +6,7 @@ LIC_FILES_CHKSUM = "file://COPYING.txt;md5=87113aa2b484c59a17085b5c3f900ebf"
 
 SRC_URI = "git://github.com/ec-/Quake3e.git;protocol=https;branch=main;destsuffix=git \
            file://0001-Guard-glx.h-include-with-USE_OPENGL_API.patch \
+           file://0002-Suppress-CD-key-verification.patch \
            file://q3e-data-check \
            file://q3e.desktop \
 "
@@ -14,8 +15,8 @@ PV = "1.0+git${SRCPV}"
 
 S = "${WORKDIR}/git"
 
-DEPENDS = "libsdl2 curl vulkan-loader"
-RDEPENDS:${PN} = "libsdl2 curl vulkan-loader python3-core"
+DEPENDS = "libsdl2 curl mesa"
+RDEPENDS:${PN} = "libsdl2 curl mesa python3-core"
 
 inherit cmake
 
@@ -25,11 +26,11 @@ INSANE_SKIP:${PN} += "license-checksum"
 
 EXTRA_OECMAKE = " \
     -DUSE_SDL=ON \
-    -DUSE_VULKAN=ON \
-    -DUSE_OPENGL=OFF \
+    -DUSE_VULKAN=OFF \
+    -DUSE_OPENGL=ON \
     -DUSE_CURL=ON \
     -DUSE_RENDERER_DLOPEN=OFF \
-    -DRENDERER_DEFAULT=vulkan \
+    -DRENDERER_DEFAULT=opengl \
 "
 
 do_install() {

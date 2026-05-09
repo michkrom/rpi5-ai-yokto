@@ -7,4 +7,3 @@ Terminal=true
 Type=Application
 Categories=Game;
 X-GNOME-Autostart-enabled=true
-Hidden=false

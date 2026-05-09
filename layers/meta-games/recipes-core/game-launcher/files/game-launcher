@@ -13,9 +13,11 @@ from pathlib import Path
 
 TITLE = "Yokto Game Launcher"
 
-ARCHIVE_URL = "https://archive.org/download/warfork-qfusion-master/warfork-assets-cc0-master.zip"
-ZIP_FILENAME = "warfork-assets-cc0-master.zip"
-EXTRACT_DIR = "warfork-assets-cc0-master"
+# Download sources
+Q3E_URL = "https://github.com/ioquake/ioq3/releases/download/v1.36/ioquake3-1.36.tar.xz"
+Q3E_DATA_URL = "https://github.com/ioquake/ioq3/releases/download/v1.36/ioquake3-1.36.zip"
+DOOM_URL = "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip"
+WARFORGE_URL = "https://archive.org/download/warfork-qfusion-master/warfork-assets-cc0-master.zip"
 
 def run_cmd(cmd, show_output=True):
     """Run a shell command and optionally show output"""
@@ -28,33 +30,67 @@ def run_cmd(cmd, show_output=True):
         print(result.stderr.rstrip())
     return result.returncode
 
+def run_cmd_live(cmd):
+    """Run a command showing live output"""
+    print(f"  Running: {cmd}")
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in proc.stdout:
+        print(line.rstrip())
+    proc.wait()
+    return proc.returncode
+
+def check_libraries(binary):
+    """Check shared library dependencies"""
+    try:
+        result = subprocess.run(["ldd", binary], capture_output=True, text=True)
+        missing = []
+        for line in result.stdout.split('\n'):
+            if 'not found' in line:
+                missing.append(line.strip())
+        return missing
+    except Exception as e:
+        return [str(e)]
+
 def download_q3e_data():
     """Download Quake 3 demo data using q3e-data-check"""
+    print("=" * 60)
+    print("Quake 3 Data Download")
+    print("=" * 60)
+    print("Source: q3e-data-check script")
+    print()
+    
     if Path("/usr/bin/q3e-data-check").exists():
-        print("Running q3e-data-check to download Quake 3 demo data...")
+        print("Running q3e-data-check...")
         print("-" * 40)
-        run_cmd("q3e-data-check", show_output=True)
+        result = subprocess.run(["/usr/bin/q3e-data-check"], capture_output=False, text=False)
         print("-" * 40)
         print("Quake 3 demo data download complete.")
     else:
-        print("q3e-data-check not found - Quake 3 data tool not installed")
+        print("ERROR: q3e-data-check not found")
+        print("The q3e-data-check package may not be installed")
+        print("Attempting fallback download...")
+        try:
+            DOOM_DIR = Path("/usr/share/q3e/baseq3")
+            DOOM_DIR.mkdir(parents=True, exist_ok=True)
+            print(f"Created {DOOM_DIR}")
+            print("You need to manually copy Quake 3 PAK files to this directory")
+        except Exception as e:
+            print(f"Failed: {e}")
 
 def download_doom_data():
     """Download Freedoom WAD files"""
     DOOM_DIR = Path("/usr/share/doom")
     DOOM_DIR.mkdir(parents=True, exist_ok=True)
     
-    url = "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip"
-    
     # Check if already downloaded
     if (DOOM_DIR / "freedoom1.wad").exists():
         print("Freedoom already installed")
         return
     
-    print("=" * 50)
+    print("=" * 60)
     print("Downloading Freedoom (free Doom assets)")
-    print("=" * 50)
-    print(f"Source: {url}")
+    print("=" * 60)
+    print(f"Source: {DOOM_URL}")
     print("This will download ~27MB of game data.")
     print()
     
@@ -62,7 +98,18 @@ def download_doom_data():
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = Path(tmpdir) / "freedoom.zip"
             print(f"Downloading to {zip_path}...")
-            urllib.request.urlretrieve(url, zip_path)
+            print("Progress from wget:")
+            print("-" * 40)
+            result = subprocess.run(
+                ["wget", "-O", str(zip_path), DOOM_URL],
+                capture_output=True,
+                text=True
+            )
+            print(result.stdout)
+            if result.returncode != 0:
+                print(f"wget stderr: {result.stderr}")
+                return
+            print("-" * 40)
             print(f"Downloaded: {zip_path.stat().st_size // 1024} KB")
             print()
             print("Extracting...")
@@ -75,10 +122,10 @@ def download_doom_data():
                     print(f"  extracted {name} ({len(data) // 1024} KB)")
         
         print()
-        print("=" * 50)
+        print("=" * 60)
         print("Freedoom installed successfully!")
         print(f"Location: {DOOM_DIR}")
-        print("=" * 50)
+        print("=" * 60)
     except Exception as e:
         print(f"Download failed: {e}")
 
@@ -87,10 +134,10 @@ def download_warfork_cc0_assets():
     WF_DIR = Path("/usr/share/warfork")
     WF_BASE_DIR = WF_DIR / "basewf"
     
-    print("=" * 50)
+    print("=" * 60)
     print("Warfork CC0 Assets Downloader")
-    print("=" * 50)
-    print(f"Source: {ARCHIVE_URL}")
+    print("=" * 60)
+    print(f"Source: {WARFORGE_URL}")
     print()
     
     # Check if package assets already exist
@@ -98,18 +145,26 @@ def download_warfork_cc0_assets():
         print("Warfork free textures already installed via warfork-assets package.")
     
     # Download the archive
-    print(f"Downloading {ZIP_FILENAME}...")
+    print(f"Downloading Warfork CC0 assets...")
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            zip_path = Path(tmpdir) / ZIP_FILENAME
-            urllib.request.urlretrieve(ARCHIVE_URL, zip_path)
+            zip_path = Path(tmpdir) / "warfork-assets.zip"
+            result = subprocess.run(
+                ["wget", "-O", str(zip_path), WARFORGE_URL],
+                capture_output=True,
+                text=True
+            )
+            print(result.stdout)
+            if result.returncode != 0:
+                print(f"Failed: {result.stderr}")
+                return False
             print(f"Downloaded: {zip_path.stat().st_size // 1024} KB")
             print()
             print("Extracting...")
             with zipfile.ZipFile(zip_path, 'r') as zf:
                 zf.extractall(tmpdir)
             
-            src_dir = Path(tmpdir) / EXTRACT_DIR
+            src_dir = Path(tmpdir) / "warfork-assets-cc0-master"
             print(f"Extracted to: {src_dir}")
             
             # Copy sounds to basewf
@@ -131,9 +186,9 @@ def download_warfork_cc0_assets():
                 print("No sounds directory found in archive.")
             
         print()
-        print("=" * 50)
+        print("=" * 60)
         print("CC0 assets integrated successfully!")
-        print("=" * 50)
+        print("=" * 60)
         return True
     except Exception as e:
         print(f"Download/extract failed: {e}")
@@ -144,7 +199,9 @@ def download_warfork_data():
     WF_DIR = Path("/usr/share/warfork")
     WF_DIR.mkdir(parents=True, exist_ok=True)
     
-    print("Warfork asset options:")
+    print("=" * 60)
+    print("Warfork Asset Options")
+    print("=" * 60)
     print("  1. warfork-assets package (CC0 textures) - included in image")
     print("  2. Download additional CC0 assets from Archive.org (sounds, etc.)")
     print("  3. Copy Steam Warfork assets to /usr/share/warfork/")
@@ -154,60 +211,170 @@ def download_warfork_data():
     textures_ok = (WF_DIR / "basewf" / "textures").exists()
     sounds_ok = (WF_DIR / "basewf" / "sounds").exists()
     
-    print(f"\nCurrent status:")
+    print()
+    print("Current status:")
     print(f"  Textures: {'✓ Installed' if textures_ok else '✗ Not installed'}")
     print(f"  Sounds:   {'✓ Installed' if sounds_ok else '✗ Not installed'}")
     
     if not textures_ok:
-        print("\nNote: Install warfork-assets package for CC0 textures.")
+        print()
+        print("Note: Install warfork-assets package for CC0 textures.")
     elif not sounds_ok:
-        print("\nNote: Option 2 would download additional CC0 sound assets.")
+        print()
+        print("Note: Option 2 would download additional CC0 sound assets.")
+
+def get_wayland_env():
+    """Get Wayland environment variables"""
+    env = os.environ.copy()
+    # Set SDL to use Wayland
+    env["SDL_VIDEODRIVER"] = "wayland"
+    
+    # Check for global Weston socket at /run/wayland-0
+    if Path("/run/wayland-0").exists():
+        env["WAYLAND_DISPLAY"] = "/run/wayland-0"
+    elif "WAYLAND_DISPLAY" not in env and "DISPLAY" not in env:
+        # Try to find a Wayland display in user sessions
+        for user_path in Path("/run/user").iterdir():
+            sock = user_path / "wayland-0"
+            if sock.exists():
+                env["WAYLAND_DISPLAY"] = str(sock)
+                break
+    return env
 
 def launch_warfork():
     """Launch Warfork"""
-    if Path("/usr/bin/warfork").exists():
+    binary = "/usr/bin/warfork"
+    if Path(binary).exists():
         # Check for assets
         wf_dir = Path("/usr/share/warfork")
         if not wf_dir.exists():
             print("No Warfork data directory found. Run data download first.")
             return
-        os.execvp("warfork", ["warfork"])
+        env = get_wayland_env()
+        print("Launching warfork...")
+        print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
+        # Use subprocess to allow return to menu after game exits
+        result = subprocess.run(["warfork"], env=env)
+        print(f"warfork exited with code {result.returncode}")
+        input("Press Enter to return to menu...")
     else:
         print("warfork not installed")
 
 def launch_q3e():
-    """Launch Quake3e"""
-    if Path("/usr/bin/quake3e").exists():
+    """Launch Quake3e with diagnostics"""
+    binary = "/usr/bin/quake3e"
+    if Path(binary).exists():
+        # Check dependencies first
+        missing = check_libraries(binary)
+        if missing:
+            print("Missing libraries detected:")
+            for lib in missing:
+                print(f"  - {lib}")
+            print()
+            return
+        
         # Check for data
         q3_dir = Path("/usr/share/q3e/baseq3")
         if not list(q3_dir.glob("*.pk3")):
             print("No Quake 3 data found. Run data download first.")
+            print("Available files in /usr/share/q3e/baseq3/:")
+            if q3_dir.exists():
+                for f in q3_dir.iterdir():
+                    print(f"  {f.name}")
             return
-        os.execvp("quake3e", ["quake3e"])
+        
+        env = get_wayland_env()
+        print("Launching quake3e...")
+        print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
+        print(f"  WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY', 'not set')}")
+        # Use subprocess to allow return to menu after game exits
+        result = subprocess.run(["quake3e"], env=env)
+        print(f"quake3e exited with code {result.returncode}")
+        input("Press Enter to return to menu...")
     else:
         print("quake3e not installed")
 
 def launch_doom():
-    """Launch Chocolate Doom"""
-    if Path("/usr/bin/chocolate-doom").exists():
+    """Launch Chocolate Doom with diagnostics"""
+    binary = "/usr/bin/chocolate-doom"
+    if Path(binary).exists():
+        # Check dependencies first
+        missing = check_libraries(binary)
+        if missing:
+            print("Missing libraries detected:")
+            for lib in missing:
+                print(f"  - {lib}")
+            print()
+            return
+        
         # Check for WAD
         doom_dir = Path("/usr/share/doom")
         wads = ["doom.wad", "doom2.wad", "freedoom1.wad", "freedoom2.wad"]
         found = [w for w in wads if (doom_dir / w).exists()]
         if not found:
             print("No Doom WAD files found. Run data download first.")
+            print("Available files in /usr/share/doom/:")
+            if doom_dir.exists():
+                for f in doom_dir.iterdir():
+                    print(f"  {f.name}")
             return
-        # Set Wayland SDL driver and launch
-        env = os.environ.copy()
-        env["SDL_VIDEODRIVER"] = "wayland"  # or try "wl" if wayland doesn't work
-        if "WAYLAND_DISPLAY" in os.environ:
-            env["WAYLAND_DISPLAY"] = os.environ["WAYLAND_DISPLAY"]
-        print(f"Launching chocolate-doom...")
+        
+        env = get_wayland_env()
+        print("Launching chocolate-doom...")
         print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
-        print(f"  WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY', 'not set')}")
-        os.execvpe("chocolate-doom", ["chocolate-doom"], env)
+        # Use subprocess to allow return to menu after game exits
+        result = subprocess.run(["chocolate-doom"], env=env)
+        print(f"chocolate-doom exited with code {result.returncode}")
+        input("Press Enter to return to menu...")
     else:
         print("chocolate-doom not installed")
+
+def show_diagnostics():
+    """Show system diagnostics"""
+    print("=" * 60)
+    print("System Diagnostics")
+    print("=" * 60)
+    
+    # Check SDL2
+    print("\nLibrary check:")
+    try:
+        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
+        for line in result.stdout.split('\n'):
+            if 'libSDL2' in line or 'libpng' in line:
+                print(f"  {line.strip()}")
+    except:
+        print("  ldconfig not available")
+    
+    # Check game binaries
+    print("\nGame binaries:")
+    for binary in ["/usr/bin/quake3e", "/usr/bin/chocolate-doom", "/usr/bin/warfork"]:
+        path = Path(binary)
+        status = "✓ installed" if path.exists() else "✗ not found"
+        print(f"  {binary}: {status}")
+        if path.exists():
+            missing = check_libraries(binary)
+            if missing:
+                print(f"    Missing libs: {', '.join(missing)}")
+    
+    # Check data directories
+    print("\nData directories:")
+    for data_dir in ["/usr/share/q3e/baseq3", "/usr/share/doom", "/usr/share/warfork"]:
+        path = Path(data_dir)
+        status = "✓ exists" if path.exists() else "✗ missing"
+        if path.exists():
+            try:
+                count = len(list(path.iterdir()))
+                print(f"  {data_dir}: {status} ({count} items)")
+            except:
+                print(f"  {data_dir}: {status}")
+        else:
+            print(f"  {data_dir}: {status}")
+    
+    # Check environment
+    print("\nEnvironment:")
+    print(f"  WAYLAND_DISPLAY: {os.environ.get('WAYLAND_DISPLAY', 'not set')}")
+    print(f"  DISPLAY: {os.environ.get('DISPLAY', 'not set')}")
+    print(f"  SDL_VIDEODRIVER: {os.environ.get('SDL_VIDEODRIVER', 'not set')}")
 
 def main_menu():
     """Main menu using dialog/whiptail"""
@@ -220,7 +387,8 @@ def main_menu():
 5) Download Freedoom data (free Doom assets)
 6) Download Warfork CC0 assets (sounds, etc.)
 7) Warfork data info
-8) Exit
+8) System Diagnostics
+9) Exit
 """
         print(f"\n{TITLE}")
         print(menu)
@@ -245,6 +413,8 @@ def main_menu():
         elif choice == "7":
             download_warfork_data()
         elif choice == "8":
+            show_diagnostics()
+        elif choice == "9":
             print("Goodbye!")
             break
         else:

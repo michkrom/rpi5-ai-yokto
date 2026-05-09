@@ -5,7 +5,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/weston-terminal -e /usr/bin/game-launcher
+ExecStart=/usr/bin/game-launcher
 StandardOutput=journal
 StandardError=journal
 Restart=on-failure
