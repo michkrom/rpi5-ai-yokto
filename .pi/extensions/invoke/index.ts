@@ -441,11 +441,11 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	const targetSudo = defineTool({
-		name: "invoke_target_sudo",
-		label: "Target Sudo",
-		description: "Run a command with sudo on the target via SSH.",
-		parameters: Type.Object({ command: Type.String({ description: "Command with sudo" }) }),
+	const targetRunAsRoot = defineTool({
+		name: "invoke_target_run_as_root",
+		label: "Target Run As Root",
+		description: "Run a command as root on the target Raspberry Pi via SSH.",
+		parameters: Type.Object({ command: Type.String({ description: "Command to execute as root" }) }),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
 			try {
 				const r = await sshExec(params.command, true);
@@ -493,24 +493,6 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	const targetDocker = defineTool({
-		name: "invoke_target_docker",
-		label: "Target Docker",
-		description: "Run a docker command on the target via SSH.",
-		parameters: Type.Object({ command: Type.String({ description: "Docker subcommand" }) }),
-		async execute(_toolCallId, params, _signal, _onUpdate) {
-			try {
-				const r = await sshExec(`docker ${params.command}`);
-				return { content: [{ type: "text", text: r }], details: { exit: 0 } };
-			} catch (e) {
-				return {
-					content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }],
-					details: { exit: 1 },
-				};
-			}
-		},
-	});
-
 	// ── Register All Tools ──────────────────────────────────────────────────
 
 	// Container
@@ -539,9 +521,8 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(targetDisconnect);
 	pi.registerTool(targetStatus);
 	pi.registerTool(targetExec);
-	pi.registerTool(targetSudo);
+	pi.registerTool(targetRunAsRoot);
 	pi.registerTool(targetCopy);
-	pi.registerTool(targetDocker);
 
 	pi.on("session_start", async (_event, ctx) => {
 		ctx.ui.notify("Invoke tools loaded", "info");

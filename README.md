@@ -222,9 +222,8 @@ The build system exposes functionality through MCP tools that can be discovered 
 - `invoke_target_disconnect` — Disconnect from target
 - `invoke_target_status` — Show connection status
 - `invoke_target_exec` — Run command via SSH
-- `invoke_target_sudo` — Run command with sudo via SSH
+- `invoke_target_run_as_root` — Run command as root via SSH
 - `invoke_target_copy` — Copy files via SCP
-- `invoke_target_docker` — Run docker commands on target
 
 ### PI Extension
 

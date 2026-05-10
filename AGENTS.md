@@ -72,7 +72,7 @@ The Yocto build system exposes functionality through MCP (Model Context Protocol
 Available tools include:
 - **Container**: `invoke_docker_init`, `invoke_container_status`, `invoke_container_start`, `invoke_container_stop`, `invoke_container_shell`, `invoke_container_exec`, `invoke_docker_purge`
 - **Build**: `invoke_build_checkout`, `invoke_build_start`, `invoke_build_stop`, `invoke_build_status`, `invoke_build_last`, `invoke_shell`, `invoke_build_clean`, `invoke_build_rebuild`, `invoke_images`, `invoke_flash`
-- **Target**: `invoke_target_connect`, `invoke_target_disconnect`, `invoke_target_status`, `invoke_target_exec`, `invoke_target_sudo`, `invoke_target_copy`, `invoke_target_docker`
+- **Target**: `invoke_target_connect`, `invoke_target_disconnect`, `invoke_target_status`, `invoke_target_exec`, `invoke_target_run_as_root`, `invoke_target_copy`
 
 ## Key Components
 
@@ -80,7 +80,7 @@ Available tools include:
 1. **core** - Minimal headless system
 2. **wayland** - core + Weston compositor
 3. **chrome** - wayland + Chromium browser
-4. **games** - wayland + Quake3e game
+4. **games** - wayland + games (quake3, doom, warfork)
 
 ### Project Structure
 ```
