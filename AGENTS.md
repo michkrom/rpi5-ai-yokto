@@ -67,20 +67,22 @@ invoke flash --device /dev/sdb --chrome    # Replace /dev/sdb with your SD card 
 
 ## MCP Tools
 
-The Yocto build system exposes functionality through MCP (Model Context Protocol) tools that are automatically discovered by the AI agent. These tools provide a standardized interface for interacting with the build system and are prefixed with `invoke_` to match invoke task names (e.g., `invoke_build_start`, `invoke_build_status`, `invoke_container_exec`).
+The Yocto build system exposes functionality through MCP (Model Context Protocol) tools that are automatically discovered by the AI agent. These tools provide a standardized interface for interacting with the build system.
 
 Available tools include:
-- **Container**: `invoke_docker_init`, `invoke_container_status`, `invoke_container_start`, `invoke_container_stop`, `invoke_container_shell`, `invoke_container_exec`, `invoke_docker_purge`
-- **Build**: `invoke_build_checkout`, `invoke_build_start`, `invoke_build_stop`, `invoke_build_status`, `invoke_build_last`, `invoke_shell`, `invoke_build_clean`, `invoke_build_rebuild`, `invoke_images`, `invoke_flash`
-- **Target**: `invoke_target_connect`, `invoke_target_disconnect`, `invoke_target_status`, `invoke_target_exec`, `invoke_target_run_as_root`, `invoke_target_copy`
+- **Container** (invoke extension): `invoke_docker_init`, `invoke_container_status`, `invoke_container_start`, `invoke_container_stop`, `invoke_container_shell`, `invoke_container_exec`, `invoke_docker_purge`
+- **Build** (invoke extension): `invoke_build_checkout`, `invoke_build_start`, `invoke_build_stop`, `invoke_build_status`, `invoke_build_last`, `invoke_shell`, `invoke_build_clean`, `invoke_build_rebuild`, `invoke_images`, `invoke_flash`
+- **Target** (target extension): `target_connect`, `target_disconnect`, `target_status`, `target_exec`, `target_run_as_root`, `target_copy`
 
 ## Key Components
 
 ### Image Levels
 1. **core** - Minimal headless system
 2. **wayland** - core + Weston compositor
-3. **chrome** - wayland + Chromium browser
-4. **games** - wayland + games (quake3, doom, warfork)
+3. **games** - wayland + Quake3e + Chocolate Doom
+4. **chrome** - games + Chromium browser (includes all gaming functionality)
+
+> **Note:** Chrome extends games, so the chrome image includes all games plus the browser.
 
 ### Project Structure
 ```
