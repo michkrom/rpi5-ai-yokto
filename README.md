@@ -15,12 +15,12 @@ This project includes AI agent tools built with [PI](https://github.com/badlogic
 |-------|-------------|
 | **core** | Minimal headless image |
 | **wayland** | core + Wayland desktop + Weston compositor |
-| **chrome**  | wayland + Chromium browser |
 | **games**  | wayland + Quake3e + Chocolate Doom (gaming engines) |
+| **chrome** | games + Chromium browser |
 
-Each level builds upon the previous one, adding more functionality. The core level provides a minimal system, wayland adds a graphical desktop environment, chrome includes a web browser, and games adds multiple gaming engines.
+Each level builds upon the previous one in the chain: **core → wayland → games → chrome**. The core level provides a minimal system, wayland adds a graphical desktop environment, games adds gaming engines, and chrome adds a web browser (with all previous functionality including games).
 
-> **Warning:** The Chrome level build can take several hours to days. It requires building Chromium from source, which needs Rust, Clang, and the full Chromium codebase - a process requiring significant time and disk space (~100GB+).
+> **Warning:** The Chrome level build can take several hours to days. It requires building Chromium from source, which needs Rust, Clang, and the full Chromium codebase - a process requiring significant time and disk space (~100GB+). Games level is significantly faster as it only builds smaller game engines.
 
 ## Usage
 
@@ -101,11 +101,10 @@ yokto/
 ├── .dockerignore
 ├── tasks.py                # Invoke tasks
 ├── kas/
-│   ├── base.yml            # RPi5 + scarthgap + shared config
-│   ├── core.yml            # → core-image-base
+│   ├── core.yml            # Base config (RPi5 + scarthgap + shared)
 │   ├── wayland.yml         # → core-image-weston + Wayland
-│   ├── chrome.yml          # → core-image-weston + Chromium
-│   └── games.yml           # → core-image-weston + Games
+│   ├── games.yml           # → core-image-games + Quake3e + Doom
+│   └── chrome.yml          # → core-image-chrome + Chromium (includes games)
 ├── layers/                   # Gitignored wholesale. Kas clones layers here.
 │   ├── poky/                   # OE-Core (cloned by kas)
 │   ├── meta-raspberrypi/       # RPi BSP (cloned by kas)
@@ -114,7 +113,9 @@ yokto/
 ├── build/                    # Build output (gitignored)
 │   └── deploy/images/raspberrypi5/
 └── .pi/
-    └── extensions/invoke/    # PI extension with invoke-based tools
+    └── extensions/
+        ├── invoke/           # PI extension with invoke-based tools
+        └── target/           # PI extension with SSH/SCP tools for target
 ```
 
 ## Layers
@@ -139,19 +140,18 @@ The `meta-doom` layer contains:
 - `INIT_MANAGER = "systemd"`
 - `IMAGE_FSTYPES = "wic.bz2"`
 - `LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"`
+- `IMAGE_NAME` set per level for distinct output files
 
 ### Wayland level adds
 - `DISTRO_FEATURES:append = " wayland pam"`
 - `DISTRO_FEATURES:remove = " x11"`
-- `CORE_IMAGE_EXTRA_INSTALL += "weston-init"`
-
-### Chrome level adds
-- `CORE_IMAGE_EXTRA_INSTALL += "chromium-ozone-wayland"`
+- `CORE_IMAGE_EXTRA_INSTALL += "weston-examples mesa-megadriver"`
 
 ### Games level adds
-- `CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher"` — Gaming engines and launcher
+- `CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher mesa-megadriver"` — Gaming engines and launcher
 
-**Note:** Warfork support is planned but not yet building successfully due to EGL/OpenGL issues. The recipe is commented out in `kas/games.yml`.
+### Chrome level adds
+- `IMAGE_INSTALL:append = " chromium-ozone-wayland"` — Chromium browser (includes all games)
 
 ## meta-games and meta-doom Layers (Custom)
 
@@ -182,7 +182,9 @@ The `layers/meta-doom/` layer contains:
 ```
 build/deploy/images/raspberrypi5/
 ├── core-image-base-raspberrypi5.rootfs.wic.bz2    # core level
-├── core-image-weston-raspberrypi5.rootfs.wic.bz2  # wayland/chrome
+├── core-image-wayland-raspberrypi5.rootfs.wic.bz2  # wayland level
+├── core-image-games-raspberrypi5.rootfs.wic.bz2    # games level
+├── core-image-chrome-raspberrypi5.rootfs.wic.bz2   # chrome level (includes games)
 ├── Image-*.bin                                    # Kernel
 ├── *.dtb / *.dtbo                                 # Device trees
 └── bootfiles/                                     # RPi firmware
@@ -218,18 +220,22 @@ The build system exposes functionality through MCP tools that can be discovered 
 - `invoke_flash` — Flash image to SD card
 
 **Target Device Tools (SSH to RPi5):**
-- `invoke_target_connect` — Connect to RPi5 via SSH
-- `invoke_target_disconnect` — Disconnect from target
-- `invoke_target_status` — Show connection status
-- `invoke_target_exec` — Run command via SSH
-- `invoke_target_run_as_root` — Run command as root via SSH
-- `invoke_target_copy` — Copy files via SCP
+- `target_connect` — Connect to RPi5 via SSH
+- `target_disconnect` — Disconnect from target
+- `target_status` — Show connection status
+- `target_exec` — Run command via SSH
+- `target_run_as_root` — Run command as root via SSH
+- `target_copy` — Copy files via SCP
 
-### PI Extension
+### PI Extensions
 
-The `.pi/extensions/invoke/` directory contains a PI extension that auto-discovers and registers all invoke-based tools. The extension provides:
+The `.pi/extensions/` directory contains PI extensions that auto-discover and register tools:
 
-- Tool name matching: `invoke_<task-name>` (e.g., `invoke_build_start` maps to `build-start`)
+- **invoke extension** (`.pi/extensions/invoke/`): Wraps invoke tasks for container and build operations. Provides tools like `invoke_build_start`, `invoke_build_checkout`, etc.
+- **target extension** (`.pi/extensions/target/`): Direct SSH/SCP tools for target device interaction. Provides tools like `target_connect`, `target_exec`, etc.
+
+These extensions provide:
+- Tool name matching invoke tasks with `invoke_` prefix
 - Full parameter support with TypeScript types
 - Prompt snippets and guidelines for `invoke_build_start` to guide AI agents
 - Target device state management via environment variables

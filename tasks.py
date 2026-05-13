@@ -408,31 +408,66 @@ def images(ctx):
 
 
 def _clean_old_artifacts(images_dir):
-    """Remove all but the latest timestamped artifacts."""
-    wics = sorted(f for f in images_dir.glob("*.wic.bz2") if not f.is_symlink())
-    if len(wics) <= 1:
-        return
-    for old in wics[:-1]:
-        stem = old.stem.replace(".wic", "")
-        print(f"  Pruning old artifacts: {stem}")
-        for f in images_dir.glob(f"{stem}.*"):
-            f.unlink()
+    """Remove old artifacts, keeping one per image type (core/wayland/chrome/games)."""
+    # Group images by their base name (core-image-*)
+    image_groups = {}
+    for wic in images_dir.glob("*.wic.bz2"):
+        if wic.is_symlink():
+            continue
+        # Extract base name (e.g., "core-image-wayland" from "...-wayland-raspberrypi5...")
+        name = wic.stem
+        # Match pattern: core-image-{name}-raspberrypi5.rootfs
+        if name.startswith("core-image-") and name.endswith(".rootfs"):
+            base = name.replace(".rootfs", "")
+        else:
+            continue
+        if base not in image_groups:
+            image_groups[base] = []
+        image_groups[base].append(wic)
+    
+    # For each image type, keep only the latest
+    for base, files in image_groups.items():
+        if len(files) <= 1:
+            continue
+        files_sorted = sorted(files)
+        for old in files_sorted[:-1]:
+            stem = old.stem.replace(".wic", "")
+            print(f"  Pruning old artifacts: {stem}")
+            for f in images_dir.glob(f"{stem}.*"):
+                f.unlink()
 
 
 def _find_wic(level):
     """Find the correct wic.bz2 image for a level."""
     images_dir = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5"
-    if level == "core":
-        basename = "core-image-base"
-    else:
-        basename = "core-image-weston"
+    
+    # Map levels to their image basenames (new naming)
+    level_to_basename = {
+        "core": "core-image-base",
+        "wayland": "core-image-wayland",
+        "chrome": "core-image-chrome",
+        "games": "core-image-games",
+        "quake3": "core-image-games",
+    }
+    
+    basename = level_to_basename.get(level, "core-image-weston")
     pattern = f"{basename}-raspberrypi5.rootfs.wic.bz2"
     target = images_dir / pattern
+    
     if target.exists():
         return target
+    
     matches = sorted(f for f in images_dir.glob(f"{basename}-raspberrypi5.rootfs.wic.bz2") if f.exists())
     if matches:
         return matches[-1]
+    
+    # Fallback: look for any core-image-weston for backward compatibility
+    if level != "core":
+        legacy_pattern = "core-image-weston-raspberrypi5.rootfs.wic.bz2"
+        legacy_target = images_dir / legacy_pattern
+        if legacy_target.exists():
+            return legacy_target
+    
     raise Exit(f"No .wic.bz2 found for level '{level}'. Run 'invoke build-start --{level}' first.")
 
 
@@ -526,10 +561,11 @@ def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=Fals
         "layers": "Also remove kas-cloned layers (re-cloned on next build)",
         "sstate": "Also remove the sstate cache",
         "recipe": "Clean a specific recipe from the sstate cache (e.g. chromium-ozone-wayland)",
+        "tmp_only": "Remove only build/tmp/ directory, keeping sstate-cache intact (for fresh builds without losing cache)",
         "all": "Remove everything: build output, layers, downloads/, sstate-cache/",
     }
 )
-def build_clean(ctx, layers=False, sstate=False, recipe="", all=False):
+def build_clean(ctx, layers=False, sstate=False, recipe="", tmp_only=False, all=False):
     """Remove build output. Without flags, preserves downloads/, sstate-cache/, and layers."""
     lock = _read_lock()
     if _lock_alive_ctx(ctx, lock):
@@ -537,6 +573,20 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", all=False):
     _clear_lock()
 
     build_dir = ROOT / "build"
+    
+    if tmp_only:
+        # Remove only build/tmp but keep sstate-cache
+        if build_dir.exists():
+            tmp_dir = build_dir / "tmp"
+            if tmp_dir.exists():
+                print(f"  Removing {tmp_dir}/ (preserving sstate-cache/)")
+                ctx.run(f'rm -rf "{tmp_dir}"')
+            cache_dir = build_dir / "cache"
+            if cache_dir.exists():
+                print(f"  Removing {cache_dir}/ (preserving sstate-cache/)")
+                ctx.run(f'rm -rf "{cache_dir}"')
+        return
+    
     if build_dir.exists():
         if all:
             print(f"  Removing {build_dir}/ (full clean)")
@@ -573,22 +623,6 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", all=False):
             )
 
 
-@task(
-    help={
-        "core": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
-        "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
-    }
-)
-def build_rebuild(ctx, core=False, wayland=False, weston=False, chrome=False, games=False):
-    """Clean checkout layers + build output, then checkout and build."""
-    level = _validate(_level(core, wayland, weston, chrome, games))
-    print(f"\n{'='*60}\n  Clean rebuild: {level}\n{'='*60}")
-    build_clean(ctx, layers=True)
-    build_checkout(ctx, **{level: True})
-    build_start(ctx, **{level: True})
 
 
 @task

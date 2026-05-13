@@ -1,3 +1,6 @@
+# Games configuration - extends wayland.yml
+# Use: kas build kas/core.yml:wayland.yml:games.yml
+
 header:
   version: 18
 
@@ -21,15 +24,9 @@ repos:
       meta-python:
 
 local_conf_header:
-  wayland: |
-    DISTRO_FEATURES:append = " wayland pam glvnd"
-    DISTRO_FEATURES:remove = " x11"
   games: |
-    CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher"
-    # Use poky mesa (compatible with all machines) - glvnd provides libGL
-    # BBMASK .= "|mesa_24.0.7"  # This was the problem - mesa 25.1.6 from meta-raspberrypi doesn't match raspberrypi5
-    # Warfork has EGL/OpenGL issues, needs investigation
-    # CORE_IMAGE_EXTRA_INSTALL += "warfork warfork-assets"
+    CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher mesa-megadriver"
+    IMAGE_NAME = "core-image-games"
   rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "2097152"
   skip-qa: |

@@ -1,3 +1,6 @@
+# Chrome configuration - extends games.yml
+# Use: kas build kas/core.yml:wayland.yml:games.yml:chrome.yml
+
 header:
   version: 18
 
@@ -26,7 +29,5 @@ repos:
 
 local_conf_header:
   chrome: |
-    DISTRO_FEATURES:append = " wayland pam vulkan"
-    DISTRO_FEATURES:remove = " x11"
     IMAGE_INSTALL:append = " chromium-ozone-wayland"
-    IMAGE_INSTALL:append = " mesa-vulkan-drivers"
+    IMAGE_NAME = "core-image-chrome"

@@ -1,8 +1,96 @@
+# Core configuration - Raspberry Pi 5 (scarthgap)
+# Base for all other levels. Use: kas build kas/core.yml:<level>.yml
+# Or build directly: kas build kas/core.yml
+
 header:
   version: 18
+
+machine: raspberrypi5
+distro: poky
 
 target:
   - core-image-base
 
+repos:
+  poky:
+    url: https://git.yoctoproject.org/poky
+    refspec: scarthgap
+    path: layers/poky
+    layers:
+      meta:
+      meta-poky:
+      meta-yocto-bsp:
+
+  meta-raspberrypi:
+    url: https://github.com/agherzan/meta-raspberrypi
+    refspec: scarthgap
+    path: layers/meta-raspberrypi
+
+  meta-yokto:
+    path: meta-yokto
+
 local_conf_header:
-  core: |
+  standard: |
+    CONF_VERSION = "2"
+    DISTRO = "poky"
+    PACKAGE_CLASSES = "package_rpm"
+    SDKMACHINE = "x86_64"
+    USER_CLASSES = "buildstats"
+    PATCHRESOLVE = "noop"
+    INIT_MANAGER = "systemd"
+    IMAGE_FSTYPES = "wic.bz2"
+    LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
+    IONICE = ""
+    BB_TASK_NICE_LEVEL = ""
+    # Keep console
+    SERIAL_CONSOLE = "115200 ttyAMA0"
+    APPEND = "console=tty1 console=ttyAMA0,115200"
+    # Raspberry Pi config for GPU/display
+    RPI_EXTRA_CONFIG = "dtoverlay=vc4-kms-v3d-pi5\nmax_framebuffers=2\ndisable_fw_kms_setup=1\narm_boost=1"
+    # Use kernel 6.12 for better vc4 driver support
+    PREFERRED_VERSION:pn-linux-raspberrypi = "6.12%"
+    # Use meta-raspberrypi mesa 25.1.6 (supports vc4/v3d drivers for RPi)
+    # COMPATIBLE_MACHINE fix for raspberrypi5 is in meta-yokto mesa_.bbappend
+    PREFERRED_VERSION:pn-mesa = "25.1.6%"
+    # Keep weston (labwc not available in scarthgap)
+    RDEPENDS:weston:append = " pixman"
+    # Enable OpenGL support
+    DISTRO_FEATURES:append = " opengl"
+  runtime-deps: |
+    RDEPENDS:cairo:append = " pixman"
+    RDEPENDS:glib-2.0:append = " libpcre2"
+  qa-skip: |
+    INSANE_SKIP:cairo += "file-rdeps"
+    INSANE_SKIP:glib-2.0 += "file-rdeps"
+    INSANE_SKIP:glib-2.0-ptest += "file-rdeps"
+    INSANE_SKIP:weston += "file-rdeps"
+    INSANE_SKIP:weston-examples += "file-rdeps"
+    INSANE_SKIP:libweston-13 += "file-rdeps"
+    INSANE_SKIP:grep += "file-rdeps"
+  tools: |
+    CORE_IMAGE_EXTRA_INSTALL += "util-linux pciutils usbutils i2c-tools vim curl wget python3 file ldd binutils"
+  debug-tweaks: |
+    EXTRA_IMAGE_FEATURES = "debug-tweaks"
+  wks: |
+    WKS_FILE = "sdimage-raspberrypi.wks"
+    WKS_SEARCH_PATH:prepend = "${TOPDIR}/../kas:"
+  diskmon: |
+    BB_DISKMON_DIRS = "\
+        STOPTASKS,${TMPDIR},1G,100K \
+        STOPTASKS,${DL_DIR},1G,100K \
+        STOPTASKS,${SSTATE_DIR},1G,100K \
+        STOPTASKS,/tmp,100M,100K \
+        HALT,${TMPDIR},100M,1K \
+        HALT,${DL_DIR},100M,1K \
+        HALT,${SSTATE_DIR},100M,1K \
+        HALT,/tmp,10M,1K"
+  parallelism: |
+    # Limit to 32 threads max to prevent OOM crashes when compiling Chromium
+    BB_NUMBER_THREADS = "32"
+    PARALLEL_MAKE = "-j 32"
+  memory-management: |
+    # Additional memory management for large compilations like Chromium
+    BB_TASK_NICE_LEVEL = "5"
+    BB_TASK_IONICE_LEVEL = "idle"
+    # Reduce memory pressure during compilation
+    TASKSET_MOZILLA = "true"
