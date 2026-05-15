@@ -22,7 +22,7 @@ local_conf_header:
     DISTRO_FEATURES:append = " wayland pam vulkan opengl"
     DISTRO_FEATURES:remove = " x11"
     CORE_IMAGE_EXTRA_INSTALL += "weston-examples mesa-megadriver"
-    IMAGE_NAME = "core-image-wayland"
+    IMAGE_NAME = "image-wayland"
   skip-qa: |
     INSANE_SKIP:cairo += "file-rdeps"
     INSANE_SKIP:glib-2.0 += "file-rdeps"

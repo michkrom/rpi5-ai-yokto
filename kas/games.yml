@@ -26,10 +26,10 @@ repos:
 local_conf_header:
   games: |
     CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher mesa-megadriver"
-    IMAGE_NAME = "core-image-games"
-  rootfs-size: |
+    IMAGE_NAME = "image-games"
+  y_rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "2097152"
-  skip-qa: |
+  z_skip-qa: |
     INSANE_SKIP:cairo += "file-rdeps"
     INSANE_SKIP:glib-2.0 += "file-rdeps"
     INSANE_SKIP:weston += "file-rdeps"

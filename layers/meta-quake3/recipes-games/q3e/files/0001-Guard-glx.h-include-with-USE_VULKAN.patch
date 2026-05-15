@@ -1,0 +1,40 @@
+From: Yocto Builder <builder@yokto.local>
+Date: Wed, 13 May 2026 22:15:00 +0000
+Subject: [PATCH] Guard GLX includes for Vulkan-only builds
+
+When building with USE_VULKAN=ON and USE_OPENGL=OFF, the GL/glx.h
+header is not available on Wayland-only systems. Guard the include
+and GLX-specific declarations behind USE_OPENGL_API.
+
+diff --git a/code/renderer/qgl.h b/code/renderer/qgl.h
+index bd0bfc1ef..9530e54ab 100644
+--- a/code/renderer/qgl.h
++++ b/code/renderer/qgl.h
+@@ -34,7 +34,9 @@
+ #include <GL/gl.h>
+ #elif defined( __linux__ ) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined( __sun )
+ #include <GL/gl.h>
++#ifdef USE_OPENGL_API
+ #include <GL/glx.h>
++#endif
+ #elif defined(__APPLE__)
+ #include <OpenGL/gl.h>
+ #endif
+@@ -359,12 +361,14 @@
+ #ifndef __APPLE__
+ 
+ #define GLE( ret, name, ... ) extern ret ( APIENTRY * q##name )( __VA_ARGS__ );
++#ifdef USE_OPENGL_API
+ 	QGL_Swp_PROCS;
+ #ifdef _WIN32
+ 	QGL_Win32_PROCS;
+ #else // assume in opposition to win32
+ 	QGL_LinX11_PROCS;
+ #endif
++#endif /* USE_OPENGL_API */
+ #undef GLE
+ 
+ #endif // !__APPLE__
+
+-- 
+2.34.0

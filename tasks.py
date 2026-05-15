@@ -444,10 +444,10 @@ def _find_wic(level):
     # Map levels to their image basenames (new naming)
     level_to_basename = {
         "core": "core-image-base",
-        "wayland": "core-image-wayland",
-        "chrome": "core-image-chrome",
-        "games": "core-image-games",
-        "quake3": "core-image-games",
+        "wayland": "image-wayland",
+        "chrome": "image-chrome",
+        "games": "image-games",
+        "quake3": "image-games",
     }
     
     basename = level_to_basename.get(level, "core-image-weston")
@@ -461,12 +461,10 @@ def _find_wic(level):
     if matches:
         return matches[-1]
     
-    # Fallback: look for any core-image-weston for backward compatibility
-    if level != "core":
-        legacy_pattern = "core-image-weston-raspberrypi5.rootfs.wic.bz2"
-        legacy_target = images_dir / legacy_pattern
-        if legacy_target.exists():
-            return legacy_target
+    # Fallback: look for any wic.bz2 file for backward compatibility
+    wic_files = sorted(images_dir.glob("*.wic.bz2"))
+    if wic_files:
+        return wic_files[-1]
     
     raise Exit(f"No .wic.bz2 found for level '{level}'. Run 'invoke build-start --{level}' first.")
 
@@ -530,7 +528,7 @@ def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=Fals
         raw = str(wic_abs).replace(".wic.bz2", ".wic")
         bmap = str(wic_abs).replace(".wic.bz2", ".bmap")
 
-        if not Path(bmap).exists():
+        if not Path(bmap).exists() or Path(bmap).stat().st_mtime < Path(wic_abs).stat().st_mtime:
             print(f"\nGenerating bmap file...")
             r = ctx.run(f"bzcat {wic_abs} | dd conv=sparse bs=1M of={raw} && bmaptool create {raw} -o {bmap} && rm {raw}", warn=True)
         else:
