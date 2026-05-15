@@ -30,6 +30,8 @@ def _ensure_container(ctx):
     if _container_running(ctx):
         return
     _ensure_image(ctx)
+    # Remove any stopped container with same name
+    ctx.run(f'docker rm -f {CONTAINER_NAME}', warn=True)
     ctx.run(
         f'docker run -d --name {CONTAINER_NAME} '
         f'-v "{ROOT}:{WORK_MOUNT}" '
@@ -54,6 +56,10 @@ def _run_in_container(ctx, cmd, user=CONTAINER_USER, **kwargs):
 
 
 def _lock_alive_ctx(ctx, lock):
+    # First check if container is running
+    r = ctx.run(f'docker ps -q --filter name={CONTAINER_NAME}', hide=True)
+    if not r.stdout.strip():
+        return False
     return _lock_alive(lambda c: ctx.run(c, hide=True).stdout, lock)
 
 
@@ -223,6 +229,14 @@ def build_status(ctx, lines=10):
     level = lock["level"]
     pid = lock.get("pid", 0)
 
+    # Check if container is running first
+    if not _container_running(ctx):
+        print(f"Container not running (stale lock for {op_type} '{level}').")
+        _show_tail(ctx, f"{op_type}-{level}.log", lines)
+        _clear_lock()
+        print("Lock cleared.")
+        return
+
     if _lock_alive_ctx(ctx, lock):
         print(f"{op_type.capitalize()} '{level}' is running (PID {pid}).")
         _show_tail(ctx, f"{op_type}-{level}.log", lines)
@@ -257,7 +271,7 @@ def build_stop(ctx, force=False, lines=10):
     pid = lock.get("pid", 0)
 
     if not _container_running(ctx):
-        print("Container not running. Cleaning up stale lock.")
+        print(f"Container not running (stale lock for {op_type} '{level}'). Cleaning up.")
         _show_tail(ctx, f"{op_type}-{level}.log", lines)
         _clear_lock()
         return
@@ -278,6 +292,7 @@ def build_stop(ctx, force=False, lines=10):
         _show_tail(ctx, f"{op_type}-{level}.log", lines)
         return
 
+    print(f"Sending INT to {op_type} '{level}' (PID {pid})...")
     ctx.run(
         f'docker exec -u root {CONTAINER_NAME} kill -INT {pid} 2>/dev/null || true',
         echo=True,
@@ -372,7 +387,7 @@ def container_status(ctx):
         ctx.run(f'docker image inspect {IMAGE}', hide=True)
         img = "exists"
     except UnexpectedExit:
-        img = "NOT FOUND"
+        img = "NOT FOUND (run 'invoke docker-init' to build)"
 
     r = ctx.run(f'docker ps -q --filter name={CONTAINER_NAME}', hide=True)
     run = "running" if r.stdout.strip() else "stopped"
@@ -383,16 +398,55 @@ def container_status(ctx):
 @task
 def container_start(ctx):
     """Start (or restart) the background build container."""
-    ctx.run(f'docker rm -f {CONTAINER_NAME}', warn=True, hide=True)
-    _ensure_container(ctx)
-    print(f"Container {CONTAINER_NAME} is running")
+    # Check if image exists first
+    try:
+        ctx.run(f'docker image inspect {IMAGE}', hide=True)
+    except UnexpectedExit:
+        raise Exit(
+            f"Image '{IMAGE}' not found. "
+            f"Run 'invoke docker-init' first to build the image."
+        )
+    
+    # If container is already running, nothing to do
+    if _container_running(ctx):
+        print(f"Container {CONTAINER_NAME} is already running")
+        return
+    
+    # Remove any stopped container with same name
+    ctx.run(f'docker rm -f {CONTAINER_NAME}', warn=True)
+    
+    ctx.run(
+        f'docker run -d --name {CONTAINER_NAME} '
+        f'-v "{ROOT}:{WORK_MOUNT}" '
+        f'-v /etc/localtime:/etc/localtime:ro '
+        f'--workdir {WORK_MOUNT} '
+        f'{IMAGE} tail -f /dev/null',
+        echo=True,
+    )
+    
+    for _ in range(5):
+        time.sleep(0.5)
+        r = ctx.run(f'docker ps -q --filter name={CONTAINER_NAME}', hide=True)
+        if r.stdout.strip():
+            print(f"Container {CONTAINER_NAME} is running")
+            return
+    
+    raise Exit(f"Failed to start container {CONTAINER_NAME}")
 
 
 @task
 def container_stop(ctx):
     """Stop and remove the background build container."""
+    # Check if container exists first
+    r = ctx.run(f'docker ps -a -q --filter name={CONTAINER_NAME}', hide=True)
+    was_running = bool(r.stdout.strip())
+    
     ctx.run(f'docker rm -f {CONTAINER_NAME}', warn=True, hide=True)
-    print(f"Container {CONTAINER_NAME} removed")
+    
+    if was_running:
+        print(f"Container {CONTAINER_NAME} stopped and removed")
+    else:
+        print(f"Container {CONTAINER_NAME} was not running")
 
 
 @task
