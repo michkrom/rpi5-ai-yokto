@@ -1,0 +1,12 @@
+[Unit]
+Description=Yokto Game Launcher
+After=graphical-session.target
+Requires=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/weston-terminal --fullscreen -- /usr/bin/game-launcher
+Restart=no
+
+[Install]
+WantedBy=graphical-session.target

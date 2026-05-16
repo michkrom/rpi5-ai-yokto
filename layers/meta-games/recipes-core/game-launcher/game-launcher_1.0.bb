@@ -6,6 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 SRC_URI = "file://game-launcher \
            file://game-launcher.desktop \
            file://game-launcher-autostart.desktop \
+           file://game-launcher.service \
            file://game-launcher-autostart.sh \
 "
 
@@ -25,7 +26,11 @@ do_install() {
     # Install autostart script for profile.d
     install -d ${D}${sysconfdir}/profile.d
     install -m 0755 ${WORKDIR}/game-launcher-autostart.sh ${D}${sysconfdir}/profile.d/
+    # Install systemd service for user session
+    install -d ${D}${systemd_user_unitdir}
+    install -m 0644 ${WORKDIR}/game-launcher.service ${D}${systemd_user_unitdir}/
 }
 
 FILES:${PN} = "${bindir}/game-launcher ${datadir}/applications/game-launcher.desktop"
-FILES:${PN} += "${datadir}/autostart/game-launcher-autostart.desktop ${sysconfdir}/profile.d/game-launcher-autostart.sh"
+FILES:${PN} += "${datadir}/autostart/game-launcher-autostart.desktop ${systemd_user_unitdir}/game-launcher.service"
+FILES:${PN} += "${sysconfdir}/profile.d/game-launcher-autostart.sh"

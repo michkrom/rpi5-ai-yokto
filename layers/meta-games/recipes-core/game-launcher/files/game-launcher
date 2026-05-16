@@ -11,6 +11,14 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+# Log startup for debugging
+Path("/tmp/game-launcher.log").write_text(
+    f"game-launcher: started with args={sys.argv}\n"
+    f"  WAYLAND_DISPLAY={os.environ.get('WAYLAND_DISPLAY', 'not set')}\n"
+    f"  stdin isatty={sys.stdin.isatty()}\n",
+    encoding="utf-8"
+)
+
 TITLE = "Yokto Game Launcher"
 
 # Download sources
