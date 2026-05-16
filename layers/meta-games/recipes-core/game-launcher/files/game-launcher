@@ -17,7 +17,6 @@ TITLE = "Yokto Game Launcher"
 Q3E_URL = "https://github.com/ioquake/ioq3/releases/download/v1.36/ioquake3-1.36.tar.xz"
 Q3E_DATA_URL = "https://github.com/ioquake/ioq3/releases/download/v1.36/ioquake3-1.36.zip"
 DOOM_URL = "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip"
-WARFORGE_URL = "https://archive.org/download/warfork-qfusion-master/warfork-assets-cc0-master.zip"
 
 def run_cmd(cmd, show_output=True):
     """Run a shell command and optionally show output"""
@@ -29,15 +28,6 @@ def run_cmd(cmd, show_output=True):
     if show_output and result.stderr:
         print(result.stderr.rstrip())
     return result.returncode
-
-def run_cmd_live(cmd):
-    """Run a command showing live output"""
-    print(f"  Running: {cmd}")
-    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for line in proc.stdout:
-        print(line.rstrip())
-    proc.wait()
-    return proc.returncode
 
 def check_libraries(binary):
     """Check shared library dependencies"""
@@ -70,9 +60,9 @@ def download_q3e_data():
         print("The q3e-data-check package may not be installed")
         print("Attempting fallback download...")
         try:
-            DOOM_DIR = Path("/usr/share/q3e/baseq3")
-            DOOM_DIR.mkdir(parents=True, exist_ok=True)
-            print(f"Created {DOOM_DIR}")
+            Q3_DIR = Path("/usr/share/q3e/baseq3")
+            Q3_DIR.mkdir(parents=True, exist_ok=True)
+            print(f"Created {Q3_DIR}")
             print("You need to manually copy Quake 3 PAK files to this directory")
         except Exception as e:
             print(f"Failed: {e}")
@@ -129,100 +119,6 @@ def download_doom_data():
     except Exception as e:
         print(f"Download failed: {e}")
 
-def download_warfork_cc0_assets():
-    """Download additional CC0 assets for Warfork from Archive.org"""
-    WF_DIR = Path("/usr/share/warfork")
-    WF_BASE_DIR = WF_DIR / "basewf"
-    
-    print("=" * 60)
-    print("Warfork CC0 Assets Downloader")
-    print("=" * 60)
-    print(f"Source: {WARFORGE_URL}")
-    print()
-    
-    # Check if package assets already exist
-    if (WF_DIR / "basewf" / "textures").exists():
-        print("Warfork free textures already installed via warfork-assets package.")
-    
-    # Download the archive
-    print(f"Downloading Warfork CC0 assets...")
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            zip_path = Path(tmpdir) / "warfork-assets.zip"
-            result = subprocess.run(
-                ["wget", "-O", str(zip_path), WARFORGE_URL],
-                capture_output=True,
-                text=True
-            )
-            print(result.stdout)
-            if result.returncode != 0:
-                print(f"Failed: {result.stderr}")
-                return False
-            print(f"Downloaded: {zip_path.stat().st_size // 1024} KB")
-            print()
-            print("Extracting...")
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                zf.extractall(tmpdir)
-            
-            src_dir = Path(tmpdir) / "warfork-assets-cc0-master"
-            print(f"Extracted to: {src_dir}")
-            
-            # Copy sounds to basewf
-            src_sounds = src_dir / "sounds"
-            dst_sounds = WF_BASE_DIR / "sounds"
-            
-            if src_sounds.exists() and not dst_sounds.exists():
-                print(f"Copying CC0 sounds to {dst_sounds}...")
-                WF_BASE_DIR.mkdir(parents=True, exist_ok=True)
-                for item in src_sounds.iterdir():
-                    if item.is_dir():
-                        subprocess.run(["cp", "-r", str(item), str(dst_sounds / item.name)], check=False)
-                    else:
-                        subprocess.run(["cp", str(item), str(dst_sounds / item.name)], check=False)
-                print("CC0 sounds copied successfully!")
-            elif dst_sounds.exists():
-                print("Sound assets already exist, skipping.")
-            else:
-                print("No sounds directory found in archive.")
-            
-        print()
-        print("=" * 60)
-        print("CC0 assets integrated successfully!")
-        print("=" * 60)
-        return True
-    except Exception as e:
-        print(f"Download/extract failed: {e}")
-        return False
-
-def download_warfork_data():
-    """Show Warfork data options"""
-    WF_DIR = Path("/usr/share/warfork")
-    WF_DIR.mkdir(parents=True, exist_ok=True)
-    
-    print("=" * 60)
-    print("Warfork Asset Options")
-    print("=" * 60)
-    print("  1. warfork-assets package (CC0 textures) - included in image")
-    print("  2. Download additional CC0 assets from Archive.org (sounds, etc.)")
-    print("  3. Copy Steam Warfork assets to /usr/share/warfork/")
-    print("  4. Download full Warfork assets from https://warfork.com/")
-    
-    # Check current status
-    textures_ok = (WF_DIR / "basewf" / "textures").exists()
-    sounds_ok = (WF_DIR / "basewf" / "sounds").exists()
-    
-    print()
-    print("Current status:")
-    print(f"  Textures: {'✓ Installed' if textures_ok else '✗ Not installed'}")
-    print(f"  Sounds:   {'✓ Installed' if sounds_ok else '✗ Not installed'}")
-    
-    if not textures_ok:
-        print()
-        print("Note: Install warfork-assets package for CC0 textures.")
-    elif not sounds_ok:
-        print()
-        print("Note: Option 2 would download additional CC0 sound assets.")
-
 def get_wayland_env():
     """Get Wayland environment variables"""
     env = os.environ.copy()
@@ -240,25 +136,6 @@ def get_wayland_env():
                 env["WAYLAND_DISPLAY"] = str(sock)
                 break
     return env
-
-def launch_warfork():
-    """Launch Warfork"""
-    binary = "/usr/bin/warfork"
-    if Path(binary).exists():
-        # Check for assets
-        wf_dir = Path("/usr/share/warfork")
-        if not wf_dir.exists():
-            print("No Warfork data directory found. Run data download first.")
-            return
-        env = get_wayland_env()
-        print("Launching warfork...")
-        print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
-        # Use subprocess to allow return to menu after game exits
-        result = subprocess.run(["warfork"], env=env)
-        print(f"warfork exited with code {result.returncode}")
-        input("Press Enter to return to menu...")
-    else:
-        print("warfork not installed")
 
 def launch_q3e():
     """Launch Quake3e with diagnostics"""
@@ -347,7 +224,7 @@ def show_diagnostics():
     
     # Check game binaries
     print("\nGame binaries:")
-    for binary in ["/usr/bin/quake3e", "/usr/bin/chocolate-doom", "/usr/bin/warfork"]:
+    for binary in ["/usr/bin/quake3e", "/usr/bin/chocolate-doom"]:
         path = Path(binary)
         status = "✓ installed" if path.exists() else "✗ not found"
         print(f"  {binary}: {status}")
@@ -358,7 +235,7 @@ def show_diagnostics():
     
     # Check data directories
     print("\nData directories:")
-    for data_dir in ["/usr/share/q3e/baseq3", "/usr/share/doom", "/usr/share/warfork"]:
+    for data_dir in ["/usr/share/q3e/baseq3", "/usr/share/doom"]:
         path = Path(data_dir)
         status = "✓ exists" if path.exists() else "✗ missing"
         if path.exists():
@@ -382,13 +259,10 @@ def main_menu():
         menu = """
 1) Launch Quake III Arena (q3e)
 2) Launch Doom (chocolate-doom)
-3) Launch Warfork
-4) Download Quake 3 demo data
-5) Download Freedoom data (free Doom assets)
-6) Download Warfork CC0 assets (sounds, etc.)
-7) Warfork data info
-8) System Diagnostics
-9) Exit
+3) Download Quake 3 demo data
+4) Download Freedoom data (free Doom assets)
+5) System Diagnostics
+6) Exit
 """
         print(f"\n{TITLE}")
         print(menu)
@@ -403,22 +277,20 @@ def main_menu():
         elif choice == "2":
             launch_doom()
         elif choice == "3":
-            launch_warfork()
-        elif choice == "4":
             download_q3e_data()
-        elif choice == "5":
+        elif choice == "4":
             download_doom_data()
-        elif choice == "6":
-            download_warfork_cc0_assets()
-        elif choice == "7":
-            download_warfork_data()
-        elif choice == "8":
+        elif choice == "5":
             show_diagnostics()
-        elif choice == "9":
+        elif choice == "6":
             print("Goodbye!")
             break
         else:
             print("Invalid option")
 
 if __name__ == "__main__":
-    main_menu()
+    try:
+        main_menu()
+    except Exception:
+        pass
+    sys.exit(0)
