@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=Yokto Game Launcher
 Comment=Game selection and data download tool
-Exec=game-launcher
+Exec=weston-terminal --fullscreen -- /usr/bin/game-launcher
 Icon=applications-games
-Terminal=true
 Type=Application
 Categories=Game;
 X-GNOME-Autostart-enabled=true
+StartupNotify=false

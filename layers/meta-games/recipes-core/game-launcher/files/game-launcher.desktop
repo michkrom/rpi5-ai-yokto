@@ -2,8 +2,6 @@
 Type=Application
 Name=Yokto Game Launcher
 Comment=Select and launch games
-Exec=game-launcher
+Exec=weston-terminal --fullscreen -- /usr/bin/game-launcher
 Icon=applications-games
 Categories=Game;
-Terminal=true
-StartupNotify=true

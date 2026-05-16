@@ -1,23 +1,17 @@
 #!/bin/sh
 # Yokto Game Launcher autostart
-# Runs on Weston startup, offering options to download or launch games
-# Supported games: Quake III (q3e), Doom (chocolate-doom), Warfork
+# Runs on Weston startup via profile.d, offering options to download or launch games
 
-# Check if Weston is running and WAYLAND_DISPLAY is set
-if [ -z "$WAYLAND_DISPLAY" ]; then
-    # Try to find a Wayland display
-    for sock in /run/user/*/wayland-0; do
-        if [ -S "$sock" ]; then
-            export WAYLAND_DISPLAY=$(basename "$sock")
-            break
-        fi
-    done
+# Only run in Weston session
+if [ -z "$WAYLAND_DISPLAY" ] && [ ! -S "/run/wayland-0" ]; then
+    exit 0
 fi
 
-# Run the game launcher
-if [ -n "$WAYLAND_DISPLAY" ] || [ -S "/run/wayland-0" ]; then
-    /usr/bin/game-launcher 2>&1 | logger -t game-launcher &
+# Prevent multiple runs
+if [ -n "$GAME_LAUNCHER_STARTED" ]; then
+    exit 0
 fi
+export GAME_LAUNCHER_STARTED=1
 
-# Log that the autostart occurred
-logger -t game-launcher "Game launcher started on Weston session"
+# Run game-launcher in weston-terminal fullscreen
+exec /usr/bin/weston-terminal --fullscreen -- /usr/bin/game-launcher
