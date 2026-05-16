@@ -1,15 +1,14 @@
 [Unit]
 Description=Yokto Game Launcher
-After=graphical-session.target
-PartOf=graphical-session.target
+After=weston.service
+PartOf=weston.service
 
 [Service]
-Type=simple
-ExecStart=/usr/bin/game-launcher
-StandardOutput=journal
-StandardError=journal
-Restart=on-failure
-RestartSec=10
+Type=oneshot
+User=weston
+ExecStart=/usr/bin/weston-terminal --fullscreen -- /usr/bin/game-launcher
+StandardOutput=inherit
+StandardError=inherit
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=weston.service

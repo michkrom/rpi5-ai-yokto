@@ -262,7 +262,7 @@ def main_menu():
 3) Download Quake 3 demo data
 4) Download Freedoom data (free Doom assets)
 5) System Diagnostics
-6) Exit
+0) Exit
 """
         print(f"\n{TITLE}")
         print(menu)
@@ -282,7 +282,7 @@ def main_menu():
             download_doom_data()
         elif choice == "5":
             show_diagnostics()
-        elif choice == "6":
+        elif choice == "0":
             print("Goodbye!")
             break
         else:
