@@ -1,8 +1,8 @@
 diff --git a/src/loadso/dlopen/SDL_sysloadso.c b/src/loadso/dlopen/SDL_sysloadso.c
-index 1234567..abcdefg 100644
 --- a/src/loadso/dlopen/SDL_sysloadso.c
 +++ b/src/loadso/dlopen/SDL_sysloadso.c
-@@ -39,7 +39,16 @@ void *SDL_LoadObject(const char *sofile)
+@@ -46,7 +46,16 @@ void *SDL_LoadObject(const char *sofile)
+     }
  #endif
  
 -    handle = dlopen(sofile, RTLD_NOW | RTLD_LOCAL);
@@ -17,4 +17,3 @@ index 1234567..abcdefg 100644
 +        handle = dlopen(sofile, RTLD_NOW | RTLD_LOCAL);
 +    }
      loaderror = dlerror();
-     if (!handle) {

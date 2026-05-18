@@ -28,7 +28,9 @@ repos:
     path: layers/meta-raspberrypi
 
   meta-yokto:
-    path: meta-yokto
+    path: layers/meta-yokto
+    layers:
+      yokto:
 
   meta-openembedded:
     url: https://github.com/openembedded/meta-openembedded

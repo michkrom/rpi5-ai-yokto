@@ -1,7 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Yokto Game Launcher
-Comment=Select and launch games
-Exec=weston-terminal -f -- /usr/bin/game-launcher
-Icon=applications-games
-Categories=Game;
