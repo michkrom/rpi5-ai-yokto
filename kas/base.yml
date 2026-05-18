@@ -27,10 +27,10 @@ repos:
     refspec: scarthgap
     path: layers/meta-raspberrypi
 
-  meta-yokto:
-    path: layers/meta-yokto
+  meta-base:
+    path: layers/meta-base
     layers:
-      yokto:
+      base:
 
   meta-openembedded:
     url: https://github.com/openembedded/meta-openembedded
@@ -65,7 +65,7 @@ local_conf_header:
     # Use kernel 6.12 for better vc4 driver support
     PREFERRED_VERSION:pn-linux-raspberrypi = "6.12%"
     # Use meta-raspberrypi mesa 25.1.6 (supports vc4/v3d drivers for RPi)
-    # COMPATIBLE_MACHINE fix for raspberrypi5 is in meta-yokto mesa_.bbappend
+    # COMPATIBLE_MACHINE fix for raspberrypi5 is in meta-base mesa_.bbappend
     PREFERRED_VERSION:pn-mesa = "25.1.6%"
     # Keep weston (labwc not available in scarthgap)
     RDEPENDS:weston:append = " pixman"

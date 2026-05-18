@@ -3,7 +3,7 @@ layers/*
 !layers/meta-quake3/
 !layers/meta-doom/
 !layers/meta-games/
-!layers/meta-yokto/
+!layers/meta-base/
 
 # kas build output (downloads, tmp, sstate, etc.)
 build/
