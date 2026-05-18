@@ -120,6 +120,6 @@ The original implementation stored uncompressed images (~2.8GB), but was fixed t
 These layers in `layers/` are OUR custom code (not downloaded by kas):
 - `layers/meta-games/` - Game recipes (Quake3e, launcher)
 - `layers/meta-doom/` - Chocolate Doom recipe
-- `layers/meta-yokto/` - Base yokto recipes
+- `layers/meta-base/` - Base yokto recipes (SWU, graphics fixes)
 
 All other `layers/*` entries are cloned by kas and gitignored.

@@ -133,9 +133,14 @@ yokto/
 Kas clones layers into `layers/` (gitignored wholesale). To add custom layers,
 place them in `layers/` and reference them in `kas/base.yml` under `repos`.
 
+The `meta-base` layer contains:
+- SWU update generation recipes (`recipes-core/swupdate/`)
+- SDL2 Wayland-EGL patch for symbol visibility
+- Mesa and Weston configuration tweaks for RPi5
+
 The `meta-games` layer contains:
 - Quake3e recipe (`recipes-games/q3e/`)
-- Game launcher TUI (`recipes-core/game-launcher/`)
+- Game launcher TUI (`recipes-core/launcher/`)
 
 The `meta-doom` layer contains:
 - Chocolate Doom recipe (`recipes-games/chocolate-doom/`)
