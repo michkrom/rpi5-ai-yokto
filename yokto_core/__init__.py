@@ -7,20 +7,20 @@ IMAGE = "yokto"
 CONTAINER_NAME = "yocto-bg"
 CONTAINER_USER = "yocto"
 WORK_MOUNT = "/work"
-LEVELS = ("core", "wayland", "chrome", "games", "quake3")
+LEVELS = ("base", "wayland", "chrome", "games", "quake3")
 LOCK_FILE = ROOT / ".build-lock"
 
 
-def _level(core=False, wayland=False, weston=False, chrome=False, games=False, quake3=False):
+def _level(base=False, wayland=False, weston=False, chrome=False, games=False, quake3=False):
     if games or quake3:
         return "games"
     if wayland or weston:
         return "wayland"
     if chrome:
         return "chrome"
-    if core:
-        return "core"
-    return "core"
+    if base:
+        return "base"
+    return "base"
 
 
 def _validate(level):
@@ -32,16 +32,16 @@ def _validate(level):
 def _kas_args(level):
     """Return appropriate config chain for level.
     
-    Chain: core -> wayland -> games -> chrome
+    Chain: base -> wayland -> games -> chrome
     """
-    if level == "core":
-        return "kas/core.yml"
+    if level == "base":
+        return "kas/base.yml"
     elif level == "wayland":
-        return "kas/core.yml:kas/wayland.yml"
+        return "kas/base.yml:kas/wayland.yml"
     elif level == "games":
-        return "kas/core.yml:kas/wayland.yml:kas/games.yml"
+        return "kas/base.yml:kas/wayland.yml:kas/games.yml"
     else:  # chrome
-        return "kas/core.yml:kas/wayland.yml:kas/games.yml:kas/chrome.yml"
+        return "kas/base.yml:kas/wayland.yml:kas/games.yml:kas/chrome.yml"
 
 
 # ── Lock file ─────────────────────────────────────────────────────────────

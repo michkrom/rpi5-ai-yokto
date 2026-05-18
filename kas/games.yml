@@ -1,11 +1,12 @@
 # Games configuration - extends wayland.yml
-# Use: kas build kas/core.yml:wayland.yml:games.yml
+# Use: kas build kas/base.yml:wayland.yml:games.yml
 
 header:
   version: 18
 
 target:
   - core-image-weston
+  - yokto-games-swu
 
 repos:
   meta-quake3:
@@ -25,7 +26,7 @@ repos:
 
 local_conf_header:
   games: |
-    CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom game-launcher mesa-megadriver"
+    CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom launcher mesa-megadriver"
     IMAGE_NAME = "image-games"
   y_rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "2097152"

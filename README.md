@@ -64,6 +64,16 @@ invoke flash --device /dev/sdb --force     # Skip removable drive check
 # List built images
 invoke images
 
+# Generate SWU update file from built image
+invoke swu-generate --chrome --detach     # Generate .swu for chrome level
+invoke swu-generate --wayland            # Generate .swu for wayland level
+
+# Flash SWU to SD card (finds latest .swu for specified level)
+invoke swu-flash --chrome --device /dev/sdb
+
+# Apply SWU to running target device (finds latest .swu for specified level)
+invoke swu-apply --chrome --host 192.168.1.100
+
 # Container management
 invoke container-status     # Check image/container status
 invoke container-start      # Start background container
@@ -189,6 +199,88 @@ build/deploy/images/raspberrypi5/
 ├── *.dtb / *.dtbo                                 # Device trees
 └── bootfiles/                                     # RPi firmware
 ```
+
+Your warranty. You have been warned.">
+## SWU (OTA Update) Support
+
+This project supports OTA (Over-The-Air) updates using SWUpdate. The system can generate `.swu` update files and apply them to running systems.
+
+### Building with SWUpdate
+
+SWUpdate is included in all image levels. To add it manually:
+
+```bash
+# SWUpdate is automatically included in builds via core.yml
+invoke build-start --wayland --detach
+```
+
+### Generating Update Files (.swu)
+
+After building an image, generate a `.swu` update file:
+
+```bash
+# Generate .swu from the most recent built image
+invoke swu-generate --chrome
+
+# Check generated files
+invoke images  # Shows both .wic.bz2 and .swu files
+```
+
+**SWU File Sizes:** The `.swu` files are typically ~270MB (similar to `.wic.bz2`) because images are stored compressed using gzip. The `compressed = "zlib"` flag in `sw-description` tells SWUpdate to decompress during installation.
+
+The generated `.swu` file contains:
+- The full disk image (extracted from `.wic.bz2`)
+- A `sw-description` file with version hash and update instructions
+
+### Applying Updates
+
+**Option 1: Flash to SD card directly (offline update)**
+
+```bash
+# Extract and flash .swu to SD card
+invoke flash-swu --swu yokto-chrome-*.swu --device /dev/sdb
+```
+
+**Option 2: Apply to running system (online update)**
+
+```bash
+# Copy and apply update to a running RPi5
+scp yokto-chrome-*.swu root@192.168.1.100:/tmp/
+ssh root@192.168.1.100 "swupdate-apply.sh /tmp/yokto-chrome-*.swu"
+# Then reboot to activate
+```
+
+### On-Target Update Process
+
+The `swupdate-apply.sh` script on the target:
+1. Stops the GUI (Weston) if running
+2. Applies the update using `swupdate -i <file>`
+3. Reports success (reboot required to activate)
+
+### SWU File Structure
+
+A `.swu` file is a cpio archive containing:
+```
+sw-description     # Update metadata (version, hash, image info)
+image.wic.gz       # Gzipped disk image for RPi5 (compressed with zlib)
+```
+
+The `sw-description` format:
+```
+SOFTWARE_VERSION = "20241201-120000"
+FILES_HASH = "sha256-hash-of-image"
+ALLOW_DOWNGRADE = true
+images: (
+        {
+                filename = "image.wic.gz"
+                type = "raw"
+                device = "/dev/mmcblk0"
+                compressed = "zlib"
+        }
+)
+```
+
+The `compressed = "zlib"` directive tells SWUpdate to decompress the image before flashing.
 
 ## AI Agent Integration
 

@@ -91,7 +91,7 @@ def docker_init(ctx, no_cache=False):
 
 @task(
     help={
-        "core": "Minimal headless image (default)",
+        "base": "Minimal headless image (default)",
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
@@ -101,10 +101,10 @@ def docker_init(ctx, no_cache=False):
         "detach": "Run in background (for MCP)",
     }
 )
-def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, update=False, force=False, detach=False):
+def build_checkout(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, update=False, force=False, detach=False):
     """Fetch layers and write config (no build)."""
     _ensure_image(ctx)
-    level = _validate(_level(core, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -146,7 +146,7 @@ def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, g
 
 @task(
     help={
-        "core": "Minimal headless image (default)",
+        "base": "Minimal headless image (default)",
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
@@ -155,10 +155,10 @@ def build_checkout(ctx, core=False, wayland=False, weston=False, chrome=False, g
         "detach": "Run in background (for MCP)",
     }
 )
-def build_start(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, log=None, detach=False):
+def build_start(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, log=None, detach=False):
     """Checkout layers and build the image."""
     _ensure_image(ctx)
-    level = _validate(_level(core, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -343,17 +343,17 @@ def build_stop(ctx, force=False, lines=10):
 
 @task(
     help={
-        "core": "Minimal headless image (default)",
+        "base": "Minimal headless image (default)",
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games (quake3, doom, warfork)",
     }
 )
-def shell(ctx, core=False, wayland=False, weston=False, chrome=False, games=False, command=""):
+def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, command=""):
     """Open a shell with kas environment configured (sources checked out)."""
     _ensure_image(ctx)
-    level = _validate(_level(core, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games))
     if command:
         _run_in_container(
             ctx,
@@ -457,8 +457,9 @@ def container_exec(ctx, command):
 
 @task
 def images(ctx):
-    """List built .wic.bz2 images."""
+    """List built .wic.bz2 images and .swu update files."""
     ctx.run(f"find {ROOT} -path '*/deploy/images/raspberrypi5/*.wic.bz2' -ls")
+    ctx.run(f"find {ROOT} -name '*.swu' -ls")
 
 
 def _clean_old_artifacts(images_dir):
@@ -497,7 +498,7 @@ def _find_wic(level):
     
     # Map levels to their image basenames (new naming)
     level_to_basename = {
-        "core": "core-image-base",
+        "base": "image-base",
         "wayland": "image-wayland",
         "chrome": "image-chrome",
         "games": "image-games",
@@ -543,7 +544,7 @@ def _check_removable(device):
 @task(
     help={
         "device": "Target block device (e.g. /dev/sdb)",
-        "core": "Minimal headless image (default)",
+        "base": "Minimal headless image (default)",
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
@@ -553,9 +554,9 @@ def _check_removable(device):
         "dd": "Use dd instead of bmaptool",
     }
 )
-def flash(ctx, device=None, core=False, wayland=False, weston=False, chrome=False, games=False, force=False, nobmap=False, dd=False):
+def flash(ctx, device=None, base=False, wayland=False, weston=False, chrome=False, games=False, force=False, nobmap=False, dd=False):
     """Flash the built image to an SD card. Runs on host for USB access."""
-    level = _validate(_level(core, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games))
 
     if not device or not device.startswith("/dev/"):
         raise Exit(f"Device must be an absolute path like /dev/sdX, got: {device}")
@@ -686,3 +687,275 @@ def docker_purge(ctx):
         hide=True,
     )
     ctx.run(f'docker rmi -f {IMAGE}', warn=True)
+
+
+@task(
+    help={
+        "base": "Minimal headless image (default)",
+        "wayland": "Wayland desktop + Weston",
+        "weston": "Alias for --wayland",
+        "chrome": "Wayland + Chromium",
+        "games": "Wayland + games (quake3, doom, warfork)",
+        "detach": "Run in background",
+    }
+)
+def swu_generate(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, detach=False):
+    """Generate a .swu update file from a built image."""
+    _ensure_image(ctx)
+    level = _validate(_level(base, wayland, weston, chrome, games))
+    _assert_no_running_build(ctx)
+
+    _ensure_container(ctx)
+    
+    # Map levels to image base names
+    level_to_image = {
+        "base": "image-base",
+        "wayland": "image-wayland",
+        "chrome": "image-chrome",
+        "games": "image-games",
+    }
+    
+    basename = level_to_image.get(level, "core-image")
+    
+    # Find the image for this specific level
+    cmd = f'cd {WORK_MOUNT} && ls -t build/tmp/deploy/images/raspberrypi5/{basename}-*.wic.bz2 2>/dev/null | head -1'
+    
+    result = _run_in_container(ctx, cmd, hide=True)
+    wic_path = result.stdout.strip()
+    
+    if not wic_path:
+        raise Exit(f"No .wic.bz2 image found for level '{level}'. Run 'invoke build-start --{level}' first.")
+    
+    wic_file = Path(wic_path).name
+    
+    # Generate SWU
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    swu_name = f"yokto-{level}-{timestamp}.swu"
+    
+    print(f"Generating SWU from: {wic_file}")
+    print(f"Output: {swu_name}")
+    
+    # SWU files are cpio archives - create using find | cpio
+    gen_cmd = f'''
+cd /work/build/tmp/deploy/images/raspberrypi5 &&
+WIC_BZ2="{wic_file}" &&
+bzcat "$WIC_BZ2" > image.wic &&
+VERSION="{timestamp}" &&
+HASH=$(sha256sum image.wic | cut -d' ' -f1) &&
+cat > sw-description << EOF
+SOFTWARE_VERSION = "$VERSION"
+FILES_HASH = "$HASH"
+ALLOW_DOWNGRADE = true
+images: (
+        {{
+                filename = "image.wic"
+                type = "raw"
+                device = "/dev/mmcblk0"
+        }}
+)
+EOF
+# Create cpio archive (SWU format)
+echo "image.wic sw-description" | cpio -o -H crc > "{swu_name}" &&
+rm -f image.wic sw-description &&
+cp "{swu_name}" /work/ &&
+echo "SWU created: {swu_name}"
+'''
+    
+    if detach:
+        cmd_detached = (
+            f'cd {WORK_MOUNT} && '
+            f'nohup bash -lc {shlex.quote(gen_cmd)} > swu-generate-{level}.log 2>&1 & '
+            f'echo $!'
+        )
+        r = ctx.run(
+            f'docker exec -u {CONTAINER_USER} {CONTAINER_NAME} bash -lc {shlex.quote(cmd_detached)}',
+            hide=True,
+        )
+        pid = int(r.stdout.strip())
+        _write_lock(level, pid, "swu-generate")
+        print(f"SWU generation '{level}' started (PID {pid}).")
+    else:
+        _write_lock(level, 0, "swu-generate")
+        try:
+            _run_in_container(ctx, gen_cmd, echo=True)
+        finally:
+            _clear_lock()
+
+
+@task(
+    help={
+        "base": "Minimal headless image (default)",
+        "wayland": "Wayland desktop + Weston",
+        "weston": "Alias for --wayland",
+        "chrome": "Wayland + Chromium",
+        "games": "Wayland + games (quake3, doom, warfork)",
+        "device": "Target block device (e.g. /dev/sdb)",
+        "force": "Skip removable drive check",
+    }
+)
+def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, device=None, force=False):
+    """Flash a .swu update file to an SD card.
+    
+    Finds the most recent .swu file for the specified level and flashes it.
+    """
+    level = _validate(_level(base, wayland, weston, chrome, games))
+    
+    # Map levels to image names for new SWU naming
+    level_to_image = {
+        "base": "image-base",
+        "wayland": "image-wayland",
+        "chrome": "image-chrome",
+        "games": "image-games",
+    }
+    
+    image_name = level_to_image.get(level, "image-wayland")
+    
+    # First, look in deploy directory (new SWU naming)
+    deploy_swu = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5" / f"{image_name}.swu"
+    if deploy_swu.exists():
+        swu = deploy_swu
+    else:
+        # Fallback to old naming pattern
+        swu_files = sorted(ROOT.glob(f"yokto-{level}-*.swu"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not swu_files:
+            # Try any .swu file
+            swu_files = sorted(ROOT.glob("*.swu"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not swu_files:
+            raise Exit(f"No .swu file found for level '{level}'. Run 'invoke build-start --{level}' first.")
+        swu = swu_files[0]
+    
+    if not device or not device.startswith("/dev/"):
+        raise Exit(f"Device must be an absolute path like /dev/sdX, got: {device}")
+
+    if not force:
+        _check_removable(device)
+
+    # Extract the wic image from the .swu file
+    print(f"\nFlashing {swu.name} to {device}...")
+    import tempfile
+    import tarfile
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # .swu files are tar archives with sw-description and image files
+        with tarfile.open(swu, 'r') as tar:
+            # Find the .wic file
+            members = [m for m in tar.getmembers() if m.name.endswith('.wic')]
+            if not members:
+                raise Exit("No .wic file found in .swu archive")
+            
+            wic_member = members[0]
+            print(f"Found image: {wic_member.name}")
+            tar.extract(wic_member, tmpdir)
+            
+            wic_path = Path(tmpdir) / wic_member.name
+            
+            print(f"\nFlashing to {device}...")
+            r = ctx.run(f'pkexec bash -c "cat {wic_path} | dd of={device} bs=4M conv=fsync status=progress"', warn=True)
+            
+            if r and r.exited != 0:
+                raise Exit(f"Flashing failed with exit code {r.exited}")
+            
+            print("Flash complete. Syncing...")
+            ctx.run(f'pkexec sync', echo=True)
+            print(f"Successfully flashed {swu.name} to {device}")
+
+
+@task(
+    help={
+        "base": "Minimal headless image (default)",
+        "wayland": "Wayland desktop + Weston",
+        "weston": "Alias for --wayland",
+        "chrome": "Wayland + Chromium",
+        "games": "Wayland + games (quake3, doom, warfork)",
+        "host": "Target device IP or hostname",
+        "user": "SSH user (default: root)",
+        "swu": "Explicit path to .swu file (overrides level-based search)",
+    }
+)
+def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, host=None, user="root", swu=None):
+    """Apply a .swu update to a running target device via SSH.
+    
+    Uses level flags to find the appropriate .swu file, or accepts explicit --swu path.
+    Attempts /tmp first, falls back to /root if insufficient space.
+    """
+    level = _validate(_level(base, wayland, weston, chrome, games))
+    
+    # Find the .swu file
+    if swu:
+        swu_path = Path(swu)
+        if not swu_path.exists():
+            raise Exit(f"SWU file not found: {swu}")
+    else:
+        # Map levels to image names for new SWU naming
+        level_to_image = {
+            "base": "image-base",
+            "wayland": "image-wayland",
+            "chrome": "image-chrome",
+            "games": "image-games",
+        }
+        
+        image_name = level_to_image.get(level, "image-wayland")
+        
+        # First, look in deploy directory (new SWU naming)
+        deploy_swu = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5" / f"{image_name}.swu"
+        if deploy_swu.exists():
+            swu_path = deploy_swu
+        else:
+            # Fallback to old naming pattern in project root
+            swu_files = sorted(ROOT.glob(f"yokto-{level}-*.swu"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if not swu_files:
+                raise Exit(f"No .swu file found for level '{level}'. Run 'invoke build-start --{level}' first.")
+            swu_path = swu_files[0]
+    
+    if not host:
+        raise Exit(f"Host parameter is required. Usage: invoke swu-apply --{level} --host <target-ip>")
+    
+    print(f"Found SWU: {swu_path.name}")
+    
+    # Get SWU file size for info
+    swu_size_mb = swu_path.stat().st_size / (1024 * 1024)
+    print(f"SWU file size: {swu_size_mb:.1f} MB")
+    
+    # Try /tmp first, then fall back to /root
+    target_paths = ["/tmp", "/root"]
+    target_path = None
+    
+    for tmp_path in target_paths:
+        print(f"Trying to copy to {tmp_path} on target...")
+        
+        # Copy the SWU file to the target
+        r = ctx.run(f'scp "{swu_path}" {user}@{host}:{tmp_path}/', echo=True, pty=False, warn=True)
+        
+        if r and r.exited == 0:
+            # Verify file was copied correctly by checking size on target
+            verify_cmd = f'ssh {user}@{host} "ls -la {tmp_path}/{swu_path.name} 2>/dev/null && wc -c < {tmp_path}/{swu_path.name}"'
+            vr = ctx.run(verify_cmd, hide=True, warn=True, pty=False)
+            if vr and vr.exited == 0 and vr.stdout.strip():
+                try:
+                    target_size = int(vr.stdout.strip().split('\n')[-1].strip())
+                    if target_size == swu_path.stat().st_size:
+                        target_path = tmp_path
+                        print(f"Successfully copied to {tmp_path} ({swu_size_mb:.1f} MB)")
+                        break
+                    else:
+                        print(f"Size mismatch on {tmp_path}: expected {swu_path.stat().st_size}, got {target_size}")
+                except (ValueError, TypeError, IndexError):
+                    print(f"File verification failed on {tmp_path}")
+            else:
+                print(f"File verification failed on {tmp_path}")
+        else:
+            print(f"Failed to copy to {tmp_path}, trying next location...")
+    
+    if not target_path:
+        raise Exit(f"Failed to copy SWU file to target. Tried: {', '.join(target_paths)}")
+    
+    print(f"Applying update on target (using {target_path})...")
+    
+    # Apply the update
+    r = ctx.run(f'ssh {user}@{host} /usr/bin/swupdate-apply.sh {target_path}/{swu_path.name}', echo=True, warn=True, pty=False)
+    
+    if r and r.exited == 0:
+        print("Update applied successfully. Reboot the target to activate.")
+    else:
+        print(f"Update failed with exit code {r.exited if r else 'unknown'}")
+        raise Exit("Failed to apply SWU update")

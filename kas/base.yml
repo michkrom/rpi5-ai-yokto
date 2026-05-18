@@ -1,6 +1,6 @@
-# Core configuration - Raspberry Pi 5 (scarthgap)
-# Base for all other levels. Use: kas build kas/core.yml:<level>.yml
-# Or build directly: kas build kas/core.yml
+# Base configuration - Raspberry Pi 5 (scarthgap)
+# Base for all other levels. Use: kas build kas/base.yml:<level>.yml
+# Or build directly: kas build kas/base.yml
 
 header:
   version: 18
@@ -10,6 +10,7 @@ distro: poky
 
 target:
   - core-image-base
+  - yokto-base-swu
 
 repos:
   poky:
@@ -28,6 +29,18 @@ repos:
 
   meta-yokto:
     path: meta-yokto
+
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded
+    refspec: scarthgap
+    path: layers/meta-openembedded
+    layers:
+      meta-oe:
+
+  meta-swupdate:
+    url: https://github.com/sbabic/meta-swupdate
+    refspec: scarthgap
+    path: layers/meta-swupdate
 
 local_conf_header:
   standard: |
@@ -69,8 +82,12 @@ local_conf_header:
     INSANE_SKIP:grep += "file-rdeps"
   tools: |
     CORE_IMAGE_EXTRA_INSTALL += "util-linux pciutils usbutils i2c-tools vim curl wget python3 file ldd binutils"
+  swupdate: |
+    CORE_IMAGE_EXTRA_INSTALL += "swupdate swupdate-apply"
   debug-tweaks: |
     EXTRA_IMAGE_FEATURES = "debug-tweaks"
+  image-name: |
+    IMAGE_NAME = "image-base"
   wks: |
     WKS_FILE = "sdimage-raspberrypi.wks"
     WKS_SEARCH_PATH:prepend = "${TOPDIR}/../kas:"

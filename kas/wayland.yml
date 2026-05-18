@@ -1,11 +1,12 @@
-# Wayland configuration - extends core.yml
-# Use: kas build kas/core.yml:wayland.yml
+# Wayland configuration - extends base.yml
+# Use: kas build kas/base.yml:wayland.yml
 
 header:
   version: 18
 
 target:
   - core-image-weston
+  - yokto-wayland-swu
 
 repos:
   meta-openembedded:

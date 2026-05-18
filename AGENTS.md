@@ -34,7 +34,7 @@ invoke build-checkout --chrome --detach    # For Chrome level
 # or
 invoke build-checkout --wayland --detach   # For Wayland level
 # or
-invoke build-checkout --core --detach      # For minimal core level
+invoke build-checkout --base --detach      # For minimal base level
 ```
 
 ### 3. Build Image (Detached Mode Recommended)
@@ -44,7 +44,7 @@ invoke build-start --chrome --detach       # For Chrome level
 # or
 invoke build-start --wayland --detach      # For Wayland level
 # or
-invoke build-start --core --detach         # For core level
+invoke build-start --base --detach         # For base level
 
 # Monitor build progress
 invoke build-status                        # Check if running + tail logs
@@ -77,8 +77,8 @@ Available tools include:
 ## Key Components
 
 ### Image Levels
-1. **core** - Minimal headless system
-2. **wayland** - core + Weston compositor
+1. **base** - Minimal headless system
+2. **wayland** - base + Weston compositor
 3. **games** - wayland + Quake3e + Chocolate Doom
 4. **chrome** - games + Chromium browser (includes all gaming functionality)
 
@@ -101,3 +101,25 @@ rpi5-ai-yokto/
 - Shared state cache is safe to reuse across builds
 - Layers are automatically cloned by kas into `layers/`
 - Let the agent discover tools automatically rather than hardcoding tool names
+
+## SWU (Over-the-Air Update) Files
+
+SWU files are generated for OTA updates. Key details:
+
+### SWU File Size
+- **~270MB** (similar to `.wic.bz2`) - images are stored compressed with gzip
+- Uses `compressed = "zlib"` in `sw-description` for on-the-fly decompression during install
+
+### Why SWU is Compressed
+The original implementation stored uncompressed images (~2.8GB), but was fixed to:
+1. Convert bz2 → gzip (zlib) format
+2. Add `compressed = "zlib"` to sw-description
+3. SWUpdate decompresses during installation
+
+### Custom Layers (OUR code - tracked in repo)
+These layers in `layers/` are OUR custom code (not downloaded by kas):
+- `layers/meta-games/` - Game recipes (Quake3e, launcher)
+- `layers/meta-doom/` - Chocolate Doom recipe
+- `layers/meta-yokto/` - Base yokto recipes
+
+All other `layers/*` entries are cloned by kas and gitignored.

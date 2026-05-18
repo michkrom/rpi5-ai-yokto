@@ -1,11 +1,12 @@
 # Chrome configuration - extends games.yml
-# Use: kas build kas/core.yml:wayland.yml:games.yml:chrome.yml
+# Use: kas build kas/base.yml:wayland.yml:games.yml:chrome.yml
 
 header:
   version: 18
 
 target:
   - core-image-weston
+  - yokto-chrome-swu
 
 repos:
   meta-browser:
