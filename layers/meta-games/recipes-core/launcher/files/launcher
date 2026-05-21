@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Yokto Launcher - Simple TUI for game selection
+Automatically downloads game data when needed
 """
 
 import os
 import subprocess
 import sys
-import urllib.request
 import tempfile
 import zipfile
 from pathlib import Path
@@ -24,9 +24,6 @@ Path("/tmp/launcher.log").write_text(
 
 TITLE = "Yokto Launcher"
 
-# Download sources
-Q3E_URL = "https://github.com/ioquake/ioq3/releases/download/v1.36/ioquake3-1.36.tar.xz"
-Q3E_DATA_URL = "https://github.com/ioquake/ioq3/releases/download/v1.36/ioquake3-1.36.zip"
 DOOM_URL = "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip"
 
 def run_cmd(cmd, show_output=True):
@@ -110,54 +107,51 @@ except Exception as e:
     if not AUTO_SELECT_MODE:
         input("Press Enter to return to menu...")
 
-def download_q3e_data():
-    """Download Quake 3 demo data using q3e-data-check"""
-    print("=" * 60)
-    print("Quake 3 Data Download")
-    print("=" * 60)
-    print("Source: q3e-data-check script")
-    print()
+def ensure_q3e_data():
+    """Ensure Quake 3 data is available, download if missing"""
+    q3_dir = Path("/usr/share/q3e/baseq3")
+    q3_dir.mkdir(parents=True, exist_ok=True)
     
+    pk3_files = list(q3_dir.glob("*.pk3"))
+    if pk3_files:
+        print(f"Quake 3 data found: {len(pk3_files)} pk3 files")
+        return True
+    
+    print("No Quake 3 data found. Attempting download...")
+    
+    # Try q3e-data-check first
     if Path("/usr/bin/q3e-data-check").exists():
         print("Running q3e-data-check...")
-        print("-" * 40)
-        result = subprocess.run(["/usr/bin/q3e-data-check"], capture_output=False, text=False)
-        print("-" * 40)
-        print("Quake 3 demo data download complete.")
-    else:
-        print("ERROR: q3e-data-check not found")
-        print("The q3e-data-check package may not be installed")
-        print("Attempting fallback download...")
-        try:
-            Q3_DIR = Path("/usr/share/q3e/baseq3")
-            Q3_DIR.mkdir(parents=True, exist_ok=True)
-            print(f"Created {Q3_DIR}")
-            print("You need to manually copy Quake 3 PAK files to this directory")
-        except Exception as e:
-            print(f"Failed: {e}")
+        result = subprocess.run(["/usr/bin/q3e-data-check"], capture_output=False)
+        if list(q3_dir.glob("*.pk3")):
+            print("Quake 3 data downloaded successfully!")
+            return True
+    
+    print("q3e-data-check not available or failed.")
+    print("To play Quake 3, copy pak0.pk3-pak8.pk3 to /usr/share/q3e/baseq3/")
+    print("Or install q3e-data-check package for automatic download.")
+    return False
 
-def download_doom_data():
-    """Download Freedoom WAD files"""
+def ensure_doom_data():
+    """Ensure Doom data is available, download Freedoom if missing"""
     DOOM_DIR = Path("/usr/share/doom")
     DOOM_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Check if already downloaded
-    if (DOOM_DIR / "freedoom1.wad").exists():
-        print("Freedoom already installed")
-        return
+    wads = ["doom.wad", "doom2.wad", "freedoom1.wad", "freedoom2.wad"]
+    found = [w for w in wads if (DOOM_DIR / w).exists()]
     
-    print("=" * 60)
-    print("Downloading Freedoom (free Doom assets)")
-    print("=" * 60)
+    if found:
+        print(f"Doom WAD files found: {', '.join(found)}")
+        return True
+    
+    print("No Doom WAD files found. Downloading Freedoom...")
     print(f"Source: {DOOM_URL}")
     print("This will download ~27MB of game data.")
-    print()
     
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = Path(tmpdir) / "freedoom.zip"
             print(f"Downloading to {zip_path}...")
-            print("Progress from wget:")
             print("-" * 40)
             result = subprocess.run(
                 ["wget", "-O", str(zip_path), DOOM_URL],
@@ -167,38 +161,32 @@ def download_doom_data():
             print(result.stdout)
             if result.returncode != 0:
                 print(f"wget stderr: {result.stderr}")
-                return
+                return False
             print("-" * 40)
             print(f"Downloaded: {zip_path.stat().st_size // 1024} KB")
             print()
             print("Extracting...")
             with zipfile.ZipFile(zip_path) as zf:
-                namelist = zf.namelist()
-                print(f"  Archive contains {len(namelist)} files")
                 for name in ["freedoom1.wad", "freedoom2.wad"]:
                     data = zf.read(f"freedoom-0.13.0/{name}")
                     (DOOM_DIR / name).write_bytes(data)
                     print(f"  extracted {name} ({len(data) // 1024} KB)")
         
         print()
-        print("=" * 60)
         print("Freedoom installed successfully!")
-        print(f"Location: {DOOM_DIR}")
-        print("=" * 60)
+        return True
     except Exception as e:
         print(f"Download failed: {e}")
+        return False
 
 def get_wayland_env():
     """Get Wayland environment variables"""
     env = os.environ.copy()
-    # Set SDL to use Wayland
     env["SDL_VIDEODRIVER"] = "wayland"
     
-    # Check for global Weston socket at /run/wayland-0
     if Path("/run/wayland-0").exists():
         env["WAYLAND_DISPLAY"] = "/run/wayland-0"
     elif "WAYLAND_DISPLAY" not in env and "DISPLAY" not in env:
-        # Try to find a Wayland display in user sessions (check wayland-0 and wayland-1)
         for user_path in Path("/run/user").iterdir():
             for sock_name in ["wayland-0", "wayland-1"]:
                 sock = user_path / sock_name
@@ -209,76 +197,80 @@ def get_wayland_env():
                 break
     return env
 
-def launch_q3e():
-    """Launch Quake3e with diagnostics"""
+def launch_q3e(auto_download=True):
+    """Launch Quake3e with automatic data download"""
     binary = "/usr/bin/quake3e"
-    if Path(binary).exists():
-        # Check dependencies first
-        missing = check_libraries(binary)
-        if missing:
-            print("Missing libraries detected:")
-            for lib in missing:
-                print(f"  - {lib}")
-            print()
-            return
-        
-        # Check for data
-        q3_dir = Path("/usr/share/q3e/baseq3")
-        if not list(q3_dir.glob("*.pk3")):
-            print("No Quake 3 data found. Run data download first.")
-            print("Available files in /usr/share/q3e/baseq3/:")
-            if q3_dir.exists():
-                for f in q3_dir.iterdir():
-                    print(f"  {f.name}")
-            return
-        
-        env = get_wayland_env()
-        print("Launching quake3e...")
-        print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
-        print(f"  WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY', 'not set')}")
-        # Use subprocess to allow return to menu after game exits
-        result = subprocess.run(["quake3e"], env=env)
-        print(f"quake3e exited with code {result.returncode}")
-        if not AUTO_SELECT_MODE:
-            input("Press Enter to return to menu...")
-    else:
+    if not Path(binary).exists():
         print("quake3e not installed")
+        return False
+    
+    missing = check_libraries(binary)
+    if missing:
+        print("Missing libraries detected:")
+        for lib in missing:
+            print(f"  - {lib}")
+        return False
+    
+    # Check for data, download if needed
+    q3_dir = Path("/usr/share/q3e/baseq3")
+    if not list(q3_dir.glob("*.pk3")):
+        if auto_download:
+            print("Quake 3 data missing. Attempting automatic download...")
+            if not ensure_q3e_data():
+                print("Could not download Quake 3 data automatically.")
+                print("Copy pak0.pk3-pak8.pk3 to /usr/share/q3e/baseq3/")
+                return False
+        else:
+            print("No Quake 3 data found in /usr/share/q3e/baseq3/")
+            return False
+    
+    env = get_wayland_env()
+    print("Launching quake3e...")
+    print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
+    print(f"  WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY', 'not set')}")
+    result = subprocess.run(["quake3e"], env=env)
+    print(f"quake3e exited with code {result.returncode}")
+    if not AUTO_SELECT_MODE:
+        input("Press Enter to return to menu...")
+    return True
 
-def launch_doom():
-    """Launch Chocolate Doom with diagnostics"""
+def launch_doom(auto_download=True):
+    """Launch Chocolate Doom with automatic data download"""
     binary = "/usr/bin/chocolate-doom"
-    if Path(binary).exists():
-        # Check dependencies first
-        missing = check_libraries(binary)
-        if missing:
-            print("Missing libraries detected:")
-            for lib in missing:
-                print(f"  - {lib}")
-            print()
-            return
-        
-        # Check for WAD
-        doom_dir = Path("/usr/share/doom")
-        wads = ["doom.wad", "doom2.wad", "freedoom1.wad", "freedoom2.wad"]
-        found = [w for w in wads if (doom_dir / w).exists()]
-        if not found:
-            print("No Doom WAD files found. Run data download first.")
-            print("Available files in /usr/share/doom/:")
-            if doom_dir.exists():
-                for f in doom_dir.iterdir():
-                    print(f"  {f.name}")
-            return
-        
-        env = get_wayland_env()
-        print("Launching chocolate-doom...")
-        print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
-        # Use subprocess to allow return to menu after game exits
-        result = subprocess.run(["chocolate-doom"], env=env)
-        print(f"chocolate-doom exited with code {result.returncode}")
-        if not AUTO_SELECT_MODE:
-            input("Press Enter to return to menu...")
-    else:
+    if not Path(binary).exists():
         print("chocolate-doom not installed")
+        return False
+    
+    missing = check_libraries(binary)
+    if missing:
+        print("Missing libraries detected:")
+        for lib in missing:
+            print(f"  - {lib}")
+        return False
+    
+    # Check for WAD, download Freedoom if needed
+    doom_dir = Path("/usr/share/doom")
+    wads = ["doom.wad", "doom2.wad", "freedoom1.wad", "freedoom2.wad"]
+    found = [w for w in wads if (doom_dir / w).exists()]
+    
+    if not found:
+        if auto_download:
+            print("Doom WAD files missing. Downloading Freedoom...")
+            if not ensure_doom_data():
+                print("Could not download Freedoom data.")
+                return False
+        else:
+            print("No Doom WAD files found in /usr/share/doom/")
+            return False
+    
+    env = get_wayland_env()
+    print("Launching chocolate-doom...")
+    print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
+    result = subprocess.run(["chocolate-doom"], env=env)
+    print(f"chocolate-doom exited with code {result.returncode}")
+    if not AUTO_SELECT_MODE:
+        input("Press Enter to return to menu...")
+    return True
 
 def show_diagnostics():
     """Show system diagnostics"""
@@ -286,7 +278,6 @@ def show_diagnostics():
     print("System Diagnostics")
     print("=" * 60)
     
-    # Check SDL2
     print("\nLibrary check:")
     try:
         result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
@@ -296,7 +287,6 @@ def show_diagnostics():
     except:
         print("  ldconfig not available")
     
-    # Check game binaries
     print("\nGame binaries:")
     for binary in ["/usr/bin/quake3e", "/usr/bin/chocolate-doom"]:
         path = Path(binary)
@@ -307,7 +297,6 @@ def show_diagnostics():
             if missing:
                 print(f"    Missing libs: {', '.join(missing)}")
     
-    # Check data directories
     print("\nData directories:")
     for data_dir in ["/usr/share/q3e/baseq3", "/usr/share/doom"]:
         path = Path(data_dir)
@@ -321,7 +310,6 @@ def show_diagnostics():
         else:
             print(f"  {data_dir}: {status}")
     
-    # Check environment
     print("\nEnvironment:")
     print(f"  WAYLAND_DISPLAY: {os.environ.get('WAYLAND_DISPLAY', 'not set')}")
     print(f"  DISPLAY: {os.environ.get('DISPLAY', 'not set')}")
@@ -334,15 +322,12 @@ def main_menu(auto_select=None):
 1) Launch Quake III Arena (q3e)
 2) Launch Doom (chocolate-doom)
 3) Test EGL
-4) Download Quake 3 demo data
-5) Download Freedoom data (free Doom assets)
-6) System Diagnostics
+4) System Diagnostics
 0) Exit
 """
         print(f"\n{TITLE}")
         print(menu)
         
-        # If auto_select is provided, use it; otherwise prompt
         if auto_select is not None:
             choice = auto_select
             print(f"Auto-selecting: {choice}")
@@ -365,14 +350,6 @@ def main_menu(auto_select=None):
             if auto_select is not None:
                 break
         elif choice == "4":
-            download_q3e_data()
-            if auto_select is not None:
-                break
-        elif choice == "5":
-            download_doom_data()
-            if auto_select is not None:
-                break
-        elif choice == "6":
             show_diagnostics()
             if auto_select is not None:
                 break

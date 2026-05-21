@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import os
+"""Q3E data check and automatic download script.
+Downloads Quake 3 game data if not already present.
+"""
 import sys
 import urllib.request
 from pathlib import Path
@@ -16,9 +18,13 @@ def log(msg):
     print(msg)
 
 
-def download_all():
+def download_missing():
+    """Download any missing pak files."""
     for pak in PAKS:
         dest = Q3_DIR / pak
+        if dest.exists():
+            log(f"{pak} already exists, skipping")
+            continue
         url = f"{PKG_URL}/{pak}"
         log(f"Downloading {pak} ...")
         try:
@@ -31,36 +37,28 @@ def download_all():
                 dest.unlink()
 
 
-def interactive():
-    print()
-    print("Options:")
-    print("  1) Download all Quake 3 game data (pak0-pak8.pk3)")
-    print("  2) Copy files from an existing Quake 3 installation")
-    print("  q) Quit")
-    print()
-    choice = input("Choice: ").strip()
-    if choice == "1":
-        download_all()
-    elif choice == "2":
-        print(f"Copy your .pk3 files to {Q3_DIR}")
-    else:
-        print("Exiting")
-
-
 def main():
     Q3_DIR.mkdir(parents=True, exist_ok=True)
     pk3s = sorted(Q3_DIR.glob("*.pk3"))
     if pk3s:
         total = sum(f.stat().st_size for f in pk3s)
         log(f"Quake 3 data found: {len(pk3s)} pk3 files ({total // 1024 // 1024} MB)")
-        return
-    log("No Quake 3 game data found.")
-    log(f"Expected .pk3 files in {Q3_DIR}")
-    if sys.stdin.isatty():
-        interactive()
+        return 0
+    
+    log("No Quake 3 game data found. Downloading...")
+    download_missing()
+    
+    # Verify
+    pk3s = sorted(Q3_DIR.glob("*.pk3"))
+    if pk3s:
+        total = sum(f.stat().st_size for f in pk3s)
+        log(f"Quake 3 data ready: {len(pk3s)} pk3 files ({total // 1024 // 1024} MB)")
+        return 0
     else:
-        log("Run 'q3e-data-check' in a terminal to download demo data or copy pak files")
+        log("Failed to download Quake 3 data")
+        log(f"Copy pak0.pk3-pak8.pk3 to {Q3_DIR}")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
