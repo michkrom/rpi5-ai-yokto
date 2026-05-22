@@ -4,7 +4,7 @@
 LICENSE = "MIT"
 
 require yokto-swu.inc
-SWU_IMAGE_PATTERN = "core-image-base-raspberrypi5.rootfs*.wic.bz2"
+SWU_IMAGE_PATTERN = "image-*.wic.bz2"
 IMAGE_BASE_NAME = "yokto-base"
 
 # Ensure image is built before SWU

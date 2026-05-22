@@ -1,7 +1,7 @@
 LICENSE = "MIT"
 
 require yokto-swu.inc
-SWU_IMAGE_PATTERN = "image-games.wic.bz2"
+SWU_IMAGE_PATTERN = "image-*.wic.bz2"
 IMAGE_BASE_NAME = "yokto-games"
 
 # Ensure image is built before SWU
