@@ -171,14 +171,14 @@ def docker_purge() -> str:
 # ── Build Commands (delegate to invoke) ─────────────────────────────────
 
 @mcp.tool()
-def build_start(level: str = "core", detach: bool = True, log: str = "") -> str:
+def build_start(level: str = "base", detach: bool = True, log: str = "") -> str:
     """Run a full kas build for a given level.
 
     By default runs detached so the tool returns immediately. Monitor with
     build_logs(level).
 
     Args:
-        level: Build level: core, wayland, chrome, or games.
+        level: Build level: base, wayland, games, or chrome.
         detach: Run in background (recommended for agents).
         log: Optional log file path (only used when detach=False).
     """
@@ -193,11 +193,11 @@ def build_start(level: str = "core", detach: bool = True, log: str = "") -> str:
 
 
 @mcp.tool()
-def build_checkout(level: str = "core", update: bool = False, force: bool = False, detach: bool = True) -> str:
+def build_checkout(level: str = "base", update: bool = False, force: bool = False, detach: bool = True) -> str:
     """Fetch/update Yocto layers for a given level without building.
 
     Args:
-        level: Build level.
+        level: Build level: base, wayland, games, or chrome.
         update: Force update of layer repos (git pull).
         force: Overwrite existing config files.
         detach: Run checkout in background.
@@ -241,11 +241,11 @@ def build_last(lines: int = 20) -> str:
 
 
 @mcp.tool()
-def build_logs(level: str = "core", lines: int = 50) -> str:
+def build_logs(level: str = "base", lines: int = 50) -> str:
     """Show recent output from a build log.
 
     Args:
-        level: Build level.
+        level: Build level: base, wayland, games, or chrome.
         lines: Number of tail lines to show.
     """
     log_path = PROJECT_DIR / f"build-{level}.log"
@@ -267,12 +267,12 @@ def build_logs(level: str = "core", lines: int = 50) -> str:
 
 
 @mcp.tool()
-def build_shell(command: str, level: str = "core") -> str:
+def build_shell(command: str, level: str = "base") -> str:
     """Run a command inside a kas shell with BitBake env sourced.
 
     Args:
         command: BitBake or shell command to run.
-        level: Build level for env setup.
+        level: Build level for env setup: base, wayland, games, or chrome.
     """
     if level not in LEVELS:
         return f"Unknown level '{level}'. Choose: {', '.join(LEVELS)}"
@@ -296,11 +296,11 @@ def build_clean(layers: bool = False, sstate: bool = False, recipe: str = "", al
 
 
 @mcp.tool()
-def build_rebuild(level: str = "core") -> str:
+def build_rebuild(level: str = "base") -> str:
     """Clean checkout layers + build output, then checkout and build.
 
     Args:
-        level: Build level.
+        level: Build level: base, wayland, games, or chrome.
     """
     if level not in LEVELS:
         return f"Unknown level '{level}'. Choose: {', '.join(LEVELS)}"
@@ -314,14 +314,14 @@ def build_images() -> str:
 
 
 @mcp.tool()
-def build_flash(device: str, level: str = "core", force: bool = False) -> str:
+def build_flash(device: str, level: str = "base", force: bool = False) -> str:
     """Flash a built image to an SD card device.
 
     Runs on the host for USB access (may trigger pkexec GUI password prompt).
 
     Args:
         device: Block device path (e.g. /dev/sdb).
-        level: Build level whose image to flash.
+        level: Build level whose image to flash: base, wayland, games, or chrome.
         force: Skip removable drive check.
     """
     if level not in LEVELS:
@@ -355,7 +355,7 @@ def _run_ssh(cmd: str, sudo: bool = False) -> subprocess.CompletedProcess:
     if not _target.host:
         msg = "No target connected. Call target_connect(host) first."
         raise RuntimeError(msg)
-    ssh_cmd = ["ssh", "-o", "ConnectTimeout=10"]
+    ssh_cmd = ["ssh", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=no"]
     if _target.key:
         ssh_cmd += ["-i", _target.key]
     ssh_cmd += ["-p", str(_target.port), f"{_target.user}@{_target.host}"]
@@ -447,7 +447,7 @@ def target_copy(source: str, dest: str) -> str:
     """
     key_arg = ["-i", _target.key] if _target.key else []
     r = _run(
-        ["scp", "-P", str(_target.port)]
+        ["scp", "-P", str(_target.port), "-o", "StrictHostKeyChecking=no"]
         + key_arg
         + ["-r", source, f"{_target.user}@{_target.host}:{dest}"],
         timeout=_TIMEOUT_BUILD,

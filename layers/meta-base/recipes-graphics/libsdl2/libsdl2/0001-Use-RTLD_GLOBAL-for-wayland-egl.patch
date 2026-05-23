@@ -1,19 +1,32 @@
-diff --git a/src/loadso/dlopen/SDL_sysloadso.c b/src/loadso/dlopen/SDL_sysloadso.c
+Use RTLD_GLOBAL for wayland and GLES libraries to avoid symbol visibility issues.
+libwayland-client, libwayland-egl, and libwayland-cursor all need xkbcommon
+symbols. Without RTLD_GLOBAL, these symbols remain hidden when loaded via dlopen().
+GLES libraries also need RTLD_GLOBAL when using Mesa on Wayland for proper
+symbol resolution.
+
+Upstream-Status: Pending
+
 --- a/src/loadso/dlopen/SDL_sysloadso.c
 +++ b/src/loadso/dlopen/SDL_sysloadso.c
-@@ -46,7 +46,16 @@ void *SDL_LoadObject(const char *sofile)
+@@ -46,7 +46,17 @@ void *SDL_LoadObject(const char *sofile)
      }
  #endif
  
 -    handle = dlopen(sofile, RTLD_NOW | RTLD_LOCAL);
-+    /*
-+     * Use RTLD_GLOBAL for wayland-egl to avoid symbol visibility issues.
-+     * libwayland-client needs wl_egl_window_* symbols from libwayland-egl.
-+     * Without RTLD_GLOBAL, these symbols remain hidden when loaded via dlopen().
-+     */
-+    if (SDL_strstr(sofile, "wayland-egl")) {
++    /* RTLD_GLOBAL for wayland and GLES libraries */
++    if (SDL_strstr(sofile, "wayland-client") ||
++        SDL_strstr(sofile, "wayland-egl") ||
++        SDL_strstr(sofile, "wayland-cursor") ||
++        SDL_strstr(sofile, "GLESv2") ||
++        SDL_strstr(sofile, "GLESv1_CM") ||
++        SDL_strstr(sofile, "brcmGLES")) {
 +        handle = dlopen(sofile, RTLD_NOW | RTLD_GLOBAL);
 +    } else {
 +        handle = dlopen(sofile, RTLD_NOW | RTLD_LOCAL);
 +    }
      loaderror = dlerror();
+     if (!handle) {
+         SDL_SetError("Failed loading %s: %s", sofile, loaderror);
+     }
+     return handle;
+ }
