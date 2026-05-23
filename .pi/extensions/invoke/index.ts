@@ -277,6 +277,29 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	const buildShell = defineTool({
+		name: "invoke_build_shell",
+		label: "Build Shell",
+		description: "Enter kas shell with environment configured. Without --command: enters interactive shell. With --command: runs the command in kas environment.",
+		parameters: Type.Object({
+			level: Type.String({ description: "Build level for env setup", default: "core" }),
+			command: Type.String({ description: "Command to run (if omitted, enters interactive shell)", default: "" }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate) {
+			const level = params.level ?? "core";
+			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
+				return {
+					content: [{ type: "text", text: `Unknown level '${level}'. Choose: ${LEVELS.join(", ")}` }],
+					details: { error: "unknown_level" },
+				};
+			}
+			const args = [`--${level}`];
+			if (params.command) args.push(`--command=${params.command}`);
+			const r = await runInvokeCtx("build-shell", args, 300_000);
+			return { content: [{ type: "text", text: r.text }], details: { exit: r.success ? 0 : 1 } };
+		},
+	});
+
 	const buildClean = defineTool({
 		name: "invoke_build_clean",
 		label: "Build Clean",
@@ -511,6 +534,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(buildStatus);
 	pi.registerTool(buildLast);
 	pi.registerTool(shell);
+	pi.registerTool(buildShell);
 	pi.registerTool(buildClean);
 	pi.registerTool(buildRebuild);
 	pi.registerTool(images);
