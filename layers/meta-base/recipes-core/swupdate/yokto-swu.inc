@@ -39,20 +39,22 @@ python do_swuimage () {
     with gzip.open(os.path.join(s, wic_gz_name), 'wb') as f_out:
         f_out.write(decompressed)
     
-    # Generate sw-description with compressed flag
+    # Generate sw-description with compressed flag (SWUpdate libconfig format)
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    sw_desc = f'''SOFTWARE_VERSION = "{timestamp}"
-FILES_HASH = "{hash_value}"
-ALLOW_DOWNGRADE = true
-
-images: (
-        {{
-                filename = "image.wic.gz"
-                type = "raw"
-                device = "/dev/mmcblk0"
-                compressed = "zlib"
+    sw_desc = f'''software = {{
+    version = "{timestamp}";
+    files-hash = "{hash_value}";
+    allow-downgrade = true;
+    images: {{
+        image-wic: {{
+            filename = "image.wic.gz";
+            type = "raw";
+            device = "/dev/mmcblk0";
+            compressed = "zlib";
         }}
-)
+    }}
+}};
+
 '''
     with open(os.path.join(s, "sw-description"), 'w') as f:
         f.write(sw_desc)

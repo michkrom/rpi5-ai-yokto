@@ -25,6 +25,9 @@ if [ -n "$LAUNCHER_STARTED" ]; then
 fi
 export LAUNCHER_STARTED=1
 
+# Fix permissions on log file if needed (runs as root first)
+[ -f /tmp/launcher.log ] && chmod 666 /tmp/launcher.log 2>/dev/null
+
 # Run launcher in weston-terminal fullscreen
 echo "launcher: starting weston-terminal" >> /tmp/launcher.log
 echo "launcher: WAYLAND_DISPLAY=$WAYLAND_DISPLAY" >> /tmp/launcher.log

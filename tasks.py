@@ -95,7 +95,7 @@ def docker_init(ctx, no_cache=False):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
+        "games": "Wayland + games",
         "update": "Force update of layer repos",
         "force": "Overwrite existing config files",
         "detach": "Run in background (for MCP)",
@@ -150,7 +150,7 @@ def build_checkout(ctx, base=False, wayland=False, weston=False, chrome=False, g
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
+        "games": "Wayland + games",
         "log": "Save build output to a file (e.g. build-chrome.log)",
         "detach": "Run in background (for MCP)",
     }
@@ -210,6 +210,38 @@ def _show_tail(ctx, log_name, lines=10):
         ctx.run(f'tail -n {lines} "{log_path}"', echo=False)
 
 
+def _show_head(ctx, log_name, lines=20):
+    """Show first N lines of a log file from the shared volume."""
+    log_path = ROOT / log_name
+    if log_path.exists():
+        ctx.run(f'head -n {lines} "{log_path}"', echo=False)
+
+
+def _show_head_tail(ctx, log_name, head=10, tail=10):
+    """Show first N and last N lines of a log file with ellipsis if file is large."""
+    log_path = ROOT / log_name
+    if not log_path.exists():
+        return
+    
+    # Get total lines in file
+    result = ctx.run(f'wc -l "{log_path}"', hide=True)
+    total_lines = int(result.stdout.split()[0])
+    
+    if head > 0 and tail > 0:
+        # Show both head and tail with separator if file is larger than head+tail
+        if total_lines > (head + tail):
+            ctx.run(f'head -n {head} "{log_path}"', echo=False)
+            print("    ... (log output truncated) ...")
+            ctx.run(f'tail -n {tail} "{log_path}"', echo=False)
+        else:
+            # File is small enough to show all
+            ctx.run(f'cat "{log_path}"', echo=False)
+    elif head > 0:
+        ctx.run(f'head -n {head} "{log_path}"', echo=False)
+    elif tail > 0:
+        ctx.run(f'tail -n {tail} "{log_path}"', echo=False)
+
+
 def _latest_log():
     """Find the most recent build or checkout log file."""
     logs = sorted(ROOT.glob("build-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -217,12 +249,45 @@ def _latest_log():
     return sorted(logs, key=lambda p: p.stat().st_mtime, reverse=True)[0] if logs else None
 
 
-@task(help={"lines": "Number of trailing log lines to show"})
-def build_status(ctx, lines=10):
-    """Check if a detached build or checkout is running."""
+@task(help={
+    "lines": "Number of trailing log lines to show (deprecated, use --tail)",
+    "head": "Number of leading log lines to show",
+    "tail": "Number of trailing log lines to show (default: 20)",
+    "headtail": "Show both head and tail lines (e.g. --headtail=10,10)"
+})
+def build_status(ctx, lines=0, head=0, tail=20, headtail=""):
+    """Check if a detached build or checkout is running with output limiting."""
+    # Handle deprecated "lines" parameter
+    if lines > 0:
+        tail = lines
+    
+    # Handle headtail parameter
+    if headtail:
+        try:
+            h, t = map(int, headtail.split(','))
+            head, tail = h, t
+        except (ValueError, IndexError):
+            print(f"Invalid headtail format. Use --headtail=head,tail (e.g. --headtail=10,10)")
+            return
+    
     lock = _read_lock()
     if not lock:
         print("No detached operation running.")
+        # Show the most recent log instead
+        log = _latest_log()
+        if log:
+            print(f"Showing last operation: {log.name}")
+            if head > 0 or tail > 0:
+                if head > 0 and tail > 0:
+                    _show_head_tail(ctx, log.name, head, tail)
+                elif head > 0:
+                    _show_head(ctx, log.name, head)
+                else:
+                    _show_tail(ctx, log.name, tail)
+            else:
+                _show_tail(ctx, log.name, 20)  # default
+        else:
+            print("No build or checkout logs found.")
         return
 
     op_type = lock.get("type", "build")
@@ -232,30 +297,81 @@ def build_status(ctx, lines=10):
     # Check if container is running first
     if not _container_running(ctx):
         print(f"Container not running (stale lock for {op_type} '{level}').")
-        _show_tail(ctx, f"{op_type}-{level}.log", lines)
+        if head > 0 or tail > 0:
+            if head > 0 and tail > 0:
+                _show_head_tail(ctx, f"{op_type}-{level}.log", head, tail)
+            elif head > 0:
+                _show_head(ctx, f"{op_type}-{level}.log", head)
+            else:
+                _show_tail(ctx, f"{op_type}-{level}.log", tail)
+        else:
+            _show_tail(ctx, f"{op_type}-{level}.log", 20)  # default
         _clear_lock()
         print("Lock cleared.")
         return
 
     if _lock_alive_ctx(ctx, lock):
         print(f"{op_type.capitalize()} '{level}' is running (PID {pid}).")
-        _show_tail(ctx, f"{op_type}-{level}.log", lines)
+        if head > 0 or tail > 0:
+            if head > 0 and tail > 0:
+                _show_head_tail(ctx, f"{op_type}-{level}.log", head, tail)
+            elif head > 0:
+                _show_head(ctx, f"{op_type}-{level}.log", head)
+            else:
+                _show_tail(ctx, f"{op_type}-{level}.log", tail)
+        else:
+            _show_tail(ctx, f"{op_type}-{level}.log", 20)  # default
     else:
         print(f"{op_type.capitalize()} '{level}' has finished.")
-        _show_tail(ctx, f"{op_type}-{level}.log", lines)
+        if head > 0 or tail > 0:
+            if head > 0 and tail > 0:
+                _show_head_tail(ctx, f"{op_type}-{level}.log", head, tail)
+            elif head > 0:
+                _show_head(ctx, f"{op_type}-{level}.log", head)
+            else:
+                _show_tail(ctx, f"{op_type}-{level}.log", tail)
+        else:
+            _show_tail(ctx, f"{op_type}-{level}.log", 20)  # default
         _clear_lock()
         print("Lock cleared.")
 
 
-@task(help={"lines": "Number of trailing log lines to show"})
-def build_last(ctx, lines=20):
-    """Show the result of the most recent build or checkout operation."""
+@task(help={
+    "lines": "Number of trailing log lines to show (deprecated, use --tail)",
+    "head": "Number of leading log lines to show",
+    "tail": "Number of trailing log lines to show (default: 20)",
+    "headtail": "Show both head and tail lines (e.g. --headtail=10,10)"
+})
+def build_last(ctx, lines=0, head=0, tail=20, headtail=""):
+    """Show the result of the most recent build or checkout operation with output limiting."""
+    # Handle deprecated "lines" parameter
+    if lines > 0:
+        tail = lines
+    
+    # Handle headtail parameter
+    if headtail:
+        try:
+            h, t = map(int, headtail.split(','))
+            head, tail = h, t
+        except (ValueError, IndexError):
+            print(f"Invalid headtail format. Use --headtail=head,tail (e.g. --headtail=10,10)")
+            return
+    
     log = _latest_log()
     if not log:
         print("No build or checkout logs found.")
         return
     print(f"\n--- {log.name} ---")
-    ctx.run(f'tail -n {lines} "{log}"', echo=False)
+    
+    if head > 0 or tail > 0:
+        if head > 0 and tail > 0:
+            _show_head_tail(ctx, log.name, head, tail)
+        elif head > 0:
+            _show_head(ctx, log.name, head)
+        else:
+            _show_tail(ctx, log.name, tail)
+    else:
+        _show_tail(ctx, log.name, 20)  # default
 
 
 @task(help={"force": "Use SIGKILL immediately", "lines": "Number of trailing log lines to show"})
@@ -347,7 +463,7 @@ def build_stop(ctx, force=False, lines=10):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
+        "games": "Wayland + games",
     }
 )
 def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, command=""):
@@ -502,7 +618,6 @@ def _find_wic(level):
         "wayland": "image-wayland",
         "chrome": "image-chrome",
         "games": "image-games",
-        "quake3": "image-games",
     }
     
     basename = level_to_basename.get(level, "core-image-weston")
@@ -548,7 +663,7 @@ def _check_removable(device):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
+        "games": "Wayland + games",
         "force": "Skip removable drive check",
         "nobmap": "Skip bmap usage, use dd instead",
         "dd": "Use dd instead of bmaptool",
@@ -695,7 +810,7 @@ def docker_purge(ctx):
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
+        "games": "Wayland + games",
         "detach": "Run in background",
     }
 )
@@ -788,7 +903,7 @@ echo "SWU created: {swu_name}"
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
+        "games": "Wayland + games",
         "device": "Target block device (e.g. /dev/sdb)",
         "force": "Skip removable drive check",
     }
@@ -866,7 +981,7 @@ def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=
         "wayland": "Wayland desktop + Weston",
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
-        "games": "Wayland + games (quake3, doom, warfork)",
+        "games": "Wayland + games",
         "host": "Target device IP or hostname",
         "user": "SSH user (default: root)",
         "swu": "Explicit path to .swu file (overrides level-based search)",
@@ -951,8 +1066,8 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
     
     print(f"Applying update on target (using {target_path})...")
     
-    # Apply the update
-    r = ctx.run(f'ssh {user}@{host} /usr/bin/swupdate-apply.sh {target_path}/{swu_path.name}', echo=True, warn=True, pty=False)
+    # Apply the update directly with swupdate tool
+    r = ctx.run(f'ssh {user}@{host} /usr/bin/swupdate -i {target_path}/{swu_path.name}', echo=True, warn=True, pty=False)
     
     if r and r.exited == 0:
         print("Update applied successfully. Reboot the target to activate.")

@@ -7,17 +7,21 @@ IMAGE = "yokto"
 CONTAINER_NAME = "yocto-bg"
 CONTAINER_USER = "yocto"
 WORK_MOUNT = "/work"
-LEVELS = ("base", "wayland", "chrome", "games", "quake3")
+LEVELS = ("base", "wayland", "games", "chrome")
 LOCK_FILE = ROOT / ".build-lock"
 
 
-def _level(base=False, wayland=False, weston=False, chrome=False, games=False, quake3=False):
-    if games or quake3:
+def _level(base=False, wayland=False, weston=False, chrome=False, games=False):
+    """Return the level string based on which level is requested.
+    
+    One-of enumeration: base -> wayland -> games -> chrome
+    """
+    if chrome:
+        return "chrome"
+    if games:
         return "games"
     if wayland or weston:
         return "wayland"
-    if chrome:
-        return "chrome"
     if base:
         return "base"
     return "base"

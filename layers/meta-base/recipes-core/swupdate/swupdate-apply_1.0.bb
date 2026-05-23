@@ -5,7 +5,9 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = "file://swupdate-apply.sh"
 
+PACKAGES = "${PN}"
+
 do_install() {
     install -d ${D}${bindir}
-    install -m 0755 ${WORKDIR}/swupdate-apply.sh ${D}${bindir}/swupdate-apply.sh
+    install -m 0755 ${WORKDIR}/swupdate-apply.sh ${D}${bindir}/swupdate-apply
 }
