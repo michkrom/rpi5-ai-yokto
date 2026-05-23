@@ -276,7 +276,7 @@ def build_shell(command: str, level: str = "base") -> str:
     """
     if level not in LEVELS:
         return f"Unknown level '{level}'. Choose: {', '.join(LEVELS)}"
-    return _run_invoke("shell", **{level: True, "command": command}, timeout=_TIMEOUT_BUILD)
+    return _run_invoke("build-shell", **{level: True, "command": command}, timeout=_TIMEOUT_BUILD)
 
 
 @mcp.tool()

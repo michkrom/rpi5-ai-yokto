@@ -464,10 +464,45 @@ def build_stop(ctx, force=False, lines=10):
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "command": "Command to run in the kas shell (if omitted, enters interactive shell)",
     }
 )
 def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, command=""):
     """Open a shell with kas environment configured (sources checked out)."""
+    _ensure_image(ctx)
+    level = _validate(_level(base, wayland, weston, chrome, games))
+    if command:
+        _run_in_container(
+            ctx,
+            f'cd {WORK_MOUNT} && kas shell {_kas_args(level)} -c {shlex.quote(command)}',
+            echo=True,
+            pty=False,
+        )
+    else:
+        _ensure_container(ctx)
+        ctx.run(
+            f'docker exec -u {CONTAINER_USER} -it {CONTAINER_NAME} bash -c '
+            f'"cd {WORK_MOUNT} && kas shell {_kas_args(level)}"',
+            pty=False,
+        )
+
+
+@task(
+    help={
+        "base": "Minimal headless image (default)",
+        "wayland": "Wayland desktop + Weston",
+        "weston": "Alias for --wayland",
+        "chrome": "Wayland + Chromium",
+        "games": "Wayland + games",
+        "command": "Command to run in the kas shell (if omitted, enters interactive shell)",
+    }
+)
+def build_shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, command=""):
+    """Enter kas shell with environment configured.
+    
+    Without --command: enters interactive shell.
+    With --command: runs the command in kas environment.
+    """
     _ensure_image(ctx)
     level = _validate(_level(base, wayland, weston, chrome, games))
     if command:
