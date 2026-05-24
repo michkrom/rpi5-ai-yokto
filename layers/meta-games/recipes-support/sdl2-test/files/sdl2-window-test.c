@@ -57,11 +57,13 @@ int main(int argc, char *argv[]) {
     printf("GL context created successfully\n");
     
     // Clear screen to show it works
-    // glClearColor(0.2f, 0.4f, 0.8f, 1.0f);
-    // glClear(GL_COLOR_BUFFER_BIT);
-    // SDL_GL_SwapWindow(window);
+    glClearColor(0.2f, 0.4f, 0.8f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    SDL_GL_SwapWindow(window);
     
     printf("=== ALL TESTS PASSED ===\n");
+    printf("Window will stay visible for 5 seconds...\n");
+    SDL_Delay(5000);
     
     // Cleanup
     SDL_GL_DeleteContext(gl_context);

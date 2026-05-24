@@ -55,6 +55,8 @@ int main(int argc, char *argv[]) {
     SDL_GL_SwapWindow(window);
     
     printf("=== ALL TESTS PASSED ===\n");
+    printf("Window will stay visible for 5 seconds...\n");
+    SDL_Delay(5000);
     
     // Cleanup
     SDL_GL_DeleteContext(context);

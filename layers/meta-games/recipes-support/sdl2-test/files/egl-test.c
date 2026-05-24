@@ -11,6 +11,7 @@
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
 
 // Simple vertex shader for full-screen quad
 static const char *vertex_shader =
