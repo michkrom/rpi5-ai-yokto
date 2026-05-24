@@ -10,6 +10,7 @@ from yokto_core import (
     ROOT, IMAGE, CONTAINER_NAME, CONTAINER_USER, WORK_MOUNT, LEVELS, LOCK_FILE,
     _level, _validate, _kas_args,
     _read_lock, _write_lock, _clear_lock, _lock_alive,
+    _filter_ssh_output, _ssh_opts,
 )
 
 
@@ -1066,6 +1067,9 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
     swu_size_mb = swu_path.stat().st_size / (1024 * 1024)
     print(f"SWU file size: {swu_size_mb:.1f} MB")
     
+    # SSH options to suppress known hosts warning and post-quantum warnings
+    ssh_opts = _ssh_opts()
+    
     # Try /tmp first, then fall back to /root
     target_paths = ["/tmp", "/root"]
     target_path = None
@@ -1073,13 +1077,26 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
     for tmp_path in target_paths:
         print(f"Trying to copy to {tmp_path} on target...")
         
-        # Copy the SWU file to the target
-        r = ctx.run(f'scp "{swu_path}" {user}@{host}:{tmp_path}/', echo=True, pty=False, warn=True)
+        # Copy the SWU file to the target (capture output, filter, then display)
+        r = ctx.run(
+            ["scp"] + ssh_opts + [str(swu_path), f"{user}@{host}:{tmp_path}/{swu_path.name}"],
+            echo=False, hide=False, warn=True, encoding="utf-8"
+        )
         
         if r and r.exited == 0:
+            # Filter and display output
+            output = _filter_ssh_output(r.stdout + r.stderr)
+            if output:
+                print(output)
+            
             # Verify file was copied correctly by checking size on target
-            verify_cmd = f'ssh {user}@{host} "ls -la {tmp_path}/{swu_path.name} 2>/dev/null && wc -c < {tmp_path}/{swu_path.name}"'
-            vr = ctx.run(verify_cmd, hide=True, warn=True, pty=False)
+            vr = ctx.run(
+                ["ssh"] + ssh_opts + ["-p", str(22), f"{user}@{host}",
+                 f"ls -la {tmp_path}/{swu_path.name} 2>/dev/null && wc -c < {tmp_path}/{swu_path.name}"],
+                hide=True, warn=True
+            )
+            vr.stdout = _filter_ssh_output(vr.stdout)
+            vr.stderr = _filter_ssh_output(vr.stderr)
             if vr and vr.exited == 0 and vr.stdout.strip():
                 try:
                     target_size = int(vr.stdout.strip().split('\n')[-1].strip())
@@ -1094,6 +1111,10 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
             else:
                 print(f"File verification failed on {tmp_path}")
         else:
+            # Filter and display error output
+            err_output = _filter_ssh_output((r.stdout if r else "") + (r.stderr if r else ""))
+            if err_output:
+                print(err_output)
             print(f"Failed to copy to {tmp_path}, trying next location...")
     
     if not target_path:
@@ -1102,7 +1123,16 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
     print(f"Applying update on target (using {target_path})...")
     
     # Apply the update directly with swupdate tool
-    r = ctx.run(f'ssh {user}@{host} /usr/bin/swupdate -i {target_path}/{swu_path.name}', echo=True, warn=True, pty=False)
+    r = ctx.run(
+        ["ssh"] + ssh_opts + ["-p", str(22), f"{user}@{host}",
+         f"/usr/bin/swupdate -i {target_path}/{swu_path.name}"],
+        echo=False, hide=False, warn=True, encoding="utf-8"
+    )
+    
+    if r:
+        output = _filter_ssh_output(r.stdout + r.stderr)
+        if output:
+            print(output)
     
     if r and r.exited == 0:
         print("Update applied successfully. Reboot the target to activate.")

@@ -1,5 +1,6 @@
 import json
 import time
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,3 +95,31 @@ def _lock_alive(runner, lock):
     )
     result = runner(cmd)
     return "alive" in result
+
+
+# ── SSH/SCP output filtering ─────────────────────────────────────────────
+
+_SSH_IGNORE_PATTERNS = re.compile(
+    "|".join([
+        r"Warning: Permanently added .* to the list of known hosts",
+        r"\*\* WARNING: connection is not using a post-quantum key exchange algorithm",
+        r"\*\* This session may be vulnerable to .+ attacks",
+        r"\*\* The server may need to be upgraded",
+        r"https?://openssh\.com/pq\.html",
+    ]),
+    re.IGNORECASE
+)
+
+
+def _filter_ssh_output(text: str) -> str:
+    """Filter known hosts and post-quantum warnings from SSH output."""
+    if not text:
+        return text
+    lines = text.split('\n')
+    filtered = [line for line in lines if not _SSH_IGNORE_PATTERNS.search(line)]
+    return '\n'.join(filtered).strip()
+
+
+def _ssh_opts() -> list:
+    """Return SSH options list to suppress known hosts and warnings."""
+    return ["-o", "UserKnownHostsFile=/dev/null", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR"]

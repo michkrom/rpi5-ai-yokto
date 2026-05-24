@@ -26,6 +26,8 @@ from yokto_core import (
     CONTAINER_USER,
     _read_lock,
     _lock_alive,
+    _filter_ssh_output,
+    _ssh_opts,
 )
 
 mcp = FastMCP("yocto-mcp", instructions="""
@@ -355,12 +357,16 @@ def _run_ssh(cmd: str, sudo: bool = False) -> subprocess.CompletedProcess:
     if not _target.host:
         msg = "No target connected. Call target_connect(host) first."
         raise RuntimeError(msg)
-    ssh_cmd = ["ssh", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=no"]
+    ssh_cmd = ["ssh", "-o", "ConnectTimeout=10"] + _ssh_opts()
     if _target.key:
         ssh_cmd += ["-i", _target.key]
     ssh_cmd += ["-p", str(_target.port), f"{_target.user}@{_target.host}"]
     full = f"sudo {cmd}" if sudo else cmd
-    return _run(ssh_cmd + [full], timeout=_TIMEOUT_BUILD)
+    result = _run(ssh_cmd + [full], timeout=_TIMEOUT_BUILD)
+    # Filter SSH warnings from output
+    result.stdout = _filter_ssh_output(result.stdout)
+    result.stderr = _filter_ssh_output(result.stderr)
+    return result
 
 
 @mcp.tool()
@@ -447,11 +453,14 @@ def target_copy(source: str, dest: str) -> str:
     """
     key_arg = ["-i", _target.key] if _target.key else []
     r = _run(
-        ["scp", "-P", str(_target.port), "-o", "StrictHostKeyChecking=no"]
+        ["scp", "-P", str(_target.port)] + _ssh_opts()
         + key_arg
         + ["-r", source, f"{_target.user}@{_target.host}:{dest}"],
         timeout=_TIMEOUT_BUILD,
     )
+    # Filter SSH warnings from output
+    r.stdout = _filter_ssh_output(r.stdout)
+    r.stderr = _filter_ssh_output(r.stderr)
     if r.returncode == 0:
         return f"Copied {source} -> {_target.host}:{dest}"
     return f"Copy failed: {r.stderr}"
