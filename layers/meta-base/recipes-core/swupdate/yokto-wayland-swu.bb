@@ -1,7 +1,7 @@
 LICENSE = "MIT"
 
 require yokto-swu.inc
-SWU_IMAGE_PATTERN = "image-*.wic.bz2"
+SWU_IMAGE_PATTERN = "image-wayland*.wic.bz2"
 IMAGE_BASE_NAME = "yokto-wayland"
 
 # Ensure image is built before SWU

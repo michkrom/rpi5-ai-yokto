@@ -89,7 +89,7 @@ local_conf_header:
   users: |
     # Add pi user to video and render groups for SDL2/EGL access
     EXTRA_USERS = "usermod -a -G video,render pi;"
-  image-name: |
+  00_image-name: |
     IMAGE_NAME = "image-base"
   wks: |
     WKS_FILE = "sdimage-raspberrypi.wks"

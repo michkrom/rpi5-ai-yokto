@@ -29,6 +29,6 @@ repos:
       meta-oe:
 
 local_conf_header:
-  z_chrome: |
+  03_chrome: |
     IMAGE_INSTALL:append = " chromium-ozone-wayland"
     IMAGE_NAME = "image-chrome"

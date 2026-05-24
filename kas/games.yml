@@ -25,11 +25,11 @@ repos:
       meta-python:
 
 local_conf_header:
-  games: |
-    CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom launcher mesa-megadriver egl-test sdl2-egl-test"
+  02_games: |
+    CORE_IMAGE_EXTRA_INSTALL += "q3e chocolate-doom launcher mesa-megadriver egl-test sdl2-egl-test sdl2-window-test"
     IMAGE_NAME = "image-games"
     PREFERRED_VERSION:pn-mesa = "25.1.6%"
-  y_rootfs-size: |
+  03_rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "2097152"
   z_skip-qa: |
     INSANE_SKIP:cairo += "file-rdeps"
