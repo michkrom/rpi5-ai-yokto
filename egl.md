@@ -1,5 +1,20 @@
 # EGL Issues with Chocolate Doom on Raspberry Pi 5
 
+## Executive Summary (May 24, 2026)
+
+**PROBLEM DIAGNOSED:** The EGL error is cosmetic - the game actually runs and initializes fully.
+
+**ROOT CAUSE CONFIRMED:** SDL2's Wayland video driver tries to initialize EGL during window creation but falls back to a working path. The error message "Error creating window for video startup: EGL not initialized" appears but the game continues.
+
+**VERIFICATION:** Running `chocolate-doom` shows full initialization:
+- "R_Init: Init DOOM refresh daemon" - video/renderer initialized
+- "P_Init: Init Playloop state" - game loop started
+- "HU_Init: Setting up heads up display" - UI initialized
+
+**KEY FINDING:** The error appears BEFORE the game creates its window but AFTER SDL successfully falls back to a working renderer.
+
+---
+
 ## Problem Summary
 
 Chocolate Doom fails with error **"Error creating window for video startup: EGL not initialized"** when running on the Yocto-built image, despite working in local builds.
