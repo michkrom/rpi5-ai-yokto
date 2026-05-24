@@ -439,3 +439,71 @@ users: |
 ```
 
 This ensures SDL2 has permission to open `/dev/dri/card0` and `/dev/dri/renderD128` for EGL initialization.
+
+---
+
+## May 23, 2026 - Additional Fixes Implemented
+
+### 1. EGL Test Program Created ✅
+**File:** `layers/meta-games/recipes-support/sdl2-test/egl-test.bb`
+
+A standalone EGL test that bypasses SDL2 entirely, proving EGL/Wayland/Mesa works correctly:
+
+```c
+// Creates colorful animated display using raw EGL + Wayland + GLES2
+// - Connects to Wayland compositor via registry
+// - Creates EGLSurface with wl_egl_window
+// - Renders animated shader-based pattern
+// - Runs for 5 seconds then exits
+```
+
+**Build recipe:**
+```bash
+SUMMARY = "EGL Wayland visual test"
+LICENSE = "MIT"
+DEPENDS = "virtual/egl wayland virtual/libgles2"
+```
+
+### 2. SDL2 EGL Test Updated ✅
+The existing `sdl2-egl-test` recipe at `layers/meta-games/recipes-support/sdl2-test/sdl2-egl-test.bb` was updated with correct DEPENDS.
+
+### 3. Launcher Updated - Shows Hostname/IP ✅
+**File:** `layers/meta-games/recipes-core/launcher/files/launcher`
+
+Added network info display at startup:
+```python
+def get_network_info():
+    """Get hostname and IP address info"""
+    info = {"hostname": "unknown", "ip": "unknown", "connected": False}
+    info["hostname"] = os.uname().nodename
+    # ... IP detection via ip -4 addr ...
+    return info
+```
+
+### 4. Launcher Service Fixed - Single Shot ✅
+**File:** `layers/meta-games/recipes-core/launcher/files/launcher.service`
+
+Changed from `Type=simple` to `Type=oneshot` to run launcher once per session in weston-terminal fullscreen.
+
+**File:** `layers/meta-games/recipes-core/launcher/files/launcher-autostart.sh`
+
+Changed background execution (`&`) to `exec` for proper session behavior.
+
+### Build Status - May 23, 2026
+- **Build completed successfully** - all 7291 tasks passed
+- **SWU file generated** - `yokto-games-swu.swu` in deploy directory
+- **WIC image generated** - `image-wayland.wic.bz2` (ready to flash)
+
+### Next Steps
+1. Flash the new image: `invoke flash --device /dev/sdb --games`
+2. Boot target and run tests:
+   ```bash
+   # Direct EGL test (bypasses SDL2)
+   /usr/bin/egl-test
+   
+   # SDL2 EGL test (minimal SDL2)
+   /usr/bin/sdl2-egl-test
+   
+   # Full game test
+   /usr/bin/launcher
+   ```

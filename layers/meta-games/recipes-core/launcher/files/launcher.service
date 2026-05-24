@@ -1,12 +1,12 @@
 [Unit]
-Description=Yokto Launcher
-After=graphical-session.target
+Description=Yokto Launcher - Game selection UI
+After=graphical-session.target weston.service
 Requires=graphical-session.target
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=/usr/bin/weston-terminal --fullscreen -- /usr/bin/launcher
-Restart=no
+RemainAfterExit=yes
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical-session.target.wants

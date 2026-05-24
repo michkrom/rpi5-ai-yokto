@@ -49,64 +49,6 @@ def check_libraries(binary):
     except Exception as e:
         return [str(e)]
 
-def test_egl():
-    """Test EGL functionality"""
-    print("=" * 60)
-    print("EGL Test")
-    print("=" * 60)
-    
-    # Check for EGL libraries
-    print("\nEGL library check:")
-    egl_libs = ["libEGL.so.1", "libGL.so.1", "libGLESv2.so.2", "libdrm.so.2"]
-    for lib in egl_libs:
-        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
-        found = any(lib in line for line in result.stdout.split('\n'))
-        status = "✓ found" if found else "✗ not found"
-        print(f"  {lib}: {status}")
-    
-    # Try loading EGL with a simple test
-    print("\nEGL initialization test:")
-    egl_test_code = '''
-import ctypes
-import ctypes.util
-
-try:
-    egl_lib = ctypes.CDLL("libEGL.so.1")
-    print("  EGL library loaded successfully")
-    
-    # Try to get EGL version
-    egl_lib.eglGetError.restype = ctypes.c_int
-    egl_lib.eglGetError.argtypes = []
-    error = egl_lib.eglGetError()
-    print(f"  EGL error state: {error} (EGL_SUCCESS=0)")
-except Exception as e:
-    print(f"  Failed to load EGL: {e}")
-'''
-    try:
-        exec(egl_test_code)
-    except Exception as e:
-        print(f"  EGL test error: {e}")
-    
-    # Check DRM devices
-    print("\nDRM device check:")
-    drm_devices = list(Path("/dev/dri").glob("card*")) if Path("/dev/dri").exists() else []
-    if drm_devices:
-        for dev in drm_devices:
-            print(f"  {dev}")
-    else:
-        print("  No DRM devices found")
-    
-    # Check render nodes
-    render_nodes = list(Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").exists() else []
-    if render_nodes:
-        print("  Render nodes:")
-        for dev in render_nodes:
-            print(f"    {dev}")
-    
-    print("\nEGL test complete.")
-    if not AUTO_SELECT_MODE:
-        input("Press Enter to return to menu...")
-
 def ensure_q3e_data():
     """Ensure Quake 3 data is available, download if missing"""
     q3_dir = Path("/usr/share/q3e/baseq3")
@@ -197,6 +139,64 @@ def get_wayland_env():
                 break
     return env
 
+def get_network_info():
+    """Get hostname and IP address info"""
+    info = {"hostname": "unknown", "ip": "unknown", "connected": False}
+    try:
+        info["hostname"] = os.uname().nodename
+    except:
+        pass
+    try:
+        # Get IP address
+        result = subprocess.run(["ip", "-4", "addr", "show"], capture_output=True, text=True)
+        for line in result.stdout.split('\n'):
+            if 'inet ' in line and '127.0.0.1' not in line:
+                # Extract IP from line like "inet 192.168.1.100/24"
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    info["ip"] = parts[1].split('/')[0]
+                    info["connected"] = True
+                    break
+    except:
+        pass
+    return info
+
+def show_net_info():
+    """Display network info prominently at startup"""
+    net = get_network_info()
+    print("=" * 60)
+    print(f"  Host: {net['hostname']}")
+    print(f"  IP:   {net['ip']}  {'🌐' if net['connected'] else '❌'}")
+    print("=" * 60)
+    print()
+    return net
+
+def run_test(binary, name):
+    """Run a test binary with proper environment"""
+    binary_path = Path(binary)
+    if not binary_path.exists():
+        print(f"{name}: binary not found at {binary}")
+        if not AUTO_SELECT_MODE:
+            input("Press Enter to return to menu...")
+        return False
+    
+    missing = check_libraries(binary)
+    if missing:
+        print(f"{name}: missing libraries:")
+        for lib in missing:
+            print(f"  - {lib}")
+        if not AUTO_SELECT_MODE:
+            input("Press Enter to return to menu...")
+        return False
+    
+    env = get_wayland_env()
+    print(f"Running {name}...")
+    result = subprocess.run([binary], env=env)
+    print(f"{name} exited with code {result.returncode}")
+    if not AUTO_SELECT_MODE:
+        input("Press Enter to return to menu...")
+    return True
+
 def launch_q3e(auto_download=True):
     """Launch Quake3e with automatic data download"""
     binary = "/usr/bin/quake3e"
@@ -272,6 +272,86 @@ def launch_doom(auto_download=True):
         input("Press Enter to return to menu...")
     return True
 
+def test_egl():
+    """Test EGL functionality - runs native egl-test binary"""
+    print("=" * 60)
+    print("EGL Test")
+    print("=" * 60)
+    
+    # Run the native egl-test binary if available
+    if Path("/usr/bin/egl-test").exists():
+        print("\nRunning native EGL test (egl-test)...")
+        run_test("/usr/bin/egl-test", "egl-test")
+        return
+    
+    # Fallback to Python-based checks
+    print("\nEGL library check:")
+    egl_libs = ["libEGL.so.1", "libGL.so.1", "libGLESv2.so.2", "libdrm.so.2"]
+    for lib in egl_libs:
+        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
+        found = any(lib in line for line in result.stdout.split('\n'))
+        status = "✓ found" if found else "✗ not found"
+        print(f"  {lib}: {status}")
+    
+    # Try loading EGL with a simple test
+    print("\nEGL initialization test:")
+    egl_test_code = '''
+import ctypes
+import ctypes.util
+
+try:
+    egl_lib = ctypes.CDLL("libEGL.so.1")
+    print("  EGL library loaded successfully")
+    
+    # Try to get EGL version
+    egl_lib.eglGetError.restype = ctypes.c_int
+    egl_lib.eglGetError.argtypes = []
+    error = egl_lib.eglGetError()
+    print(f"  EGL error state: {error} (EGL_SUCCESS=0)")
+except Exception as e:
+    print(f"  Failed to load EGL: {e}")
+'''
+    try:
+        exec(egl_test_code)
+    except Exception as e:
+        print(f"  EGL test error: {e}")
+    
+    # Check DRM devices
+    print("\nDRM device check:")
+    drm_devices = list(Path("/dev/dri").glob("card*")) if Path("/dev/dri").exists() else []
+    if drm_devices:
+        for dev in drm_devices:
+            print(f"  {dev}")
+    else:
+        print("  No DRM devices found")
+    
+    # Check render nodes
+    render_nodes = list(Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").exists() else []
+    if render_nodes:
+        print("  Render nodes:")
+        for dev in render_nodes:
+            print(f"    {dev}")
+    
+    print("\nEGL test complete.")
+    if not AUTO_SELECT_MODE:
+        input("Press Enter to return to menu...")
+
+def test_sdl2_window():
+    """Test SDL2 window creation"""
+    print("=" * 60)
+    print("SDL2 Window Test")
+    print("=" * 60)
+    print("\nTesting SDL2 window creation with OpenGL ES 2.0...")
+    run_test("/usr/bin/sdl2-window-test", "sdl2-window-test")
+
+def test_sdl2_egl():
+    """Test SDL2 EGL initialization"""
+    print("=" * 60)
+    print("SDL2 EGL Test")
+    print("=" * 60)
+    print("\nTesting SDL2 EGL initialization and rendering...")
+    run_test("/usr/bin/sdl2-egl-test", "sdl2-egl-test")
+
 def show_diagnostics():
     """Show system diagnostics"""
     print("=" * 60)
@@ -289,6 +369,16 @@ def show_diagnostics():
     
     print("\nGame binaries:")
     for binary in ["/usr/bin/quake3e", "/usr/bin/chocolate-doom"]:
+        path = Path(binary)
+        status = "✓ installed" if path.exists() else "✗ not found"
+        print(f"  {binary}: {status}")
+        if path.exists():
+            missing = check_libraries(binary)
+            if missing:
+                print(f"    Missing libs: {', '.join(missing)}")
+    
+    print("\nTest binaries:")
+    for binary in ["/usr/bin/egl-test", "/usr/bin/sdl2-window-test", "/usr/bin/sdl2-egl-test"]:
         path = Path(binary)
         status = "✓ installed" if path.exists() else "✗ not found"
         print(f"  {binary}: {status}")
@@ -317,15 +407,22 @@ def show_diagnostics():
 
 def main_menu(auto_select=None):
     """Main menu using dialog/whiptail"""
+    # Show network info prominently at startup
+    net = show_net_info()
+    
     while True:
-        menu = """
-1) Launch Quake III Arena (q3e)
+        print(f"\n{TITLE}")
+        print(f"  Host: {net['hostname']}  IP: {net['ip']}  {'🌐' if net['connected'] else '❌'}")
+        print()
+        
+        menu = """1) Launch Quake III Arena (q3e)
 2) Launch Doom (chocolate-doom)
-3) Test EGL
-4) System Diagnostics
+3) Test EGL (egl-test)
+4) Test SDL2 Window (sdl2-window-test)
+5) Test SDL2 EGL (sdl2-egl-test)
+6) System Diagnostics
 0) Exit
 """
-        print(f"\n{TITLE}")
         print(menu)
         
         if auto_select is not None:
@@ -350,6 +447,14 @@ def main_menu(auto_select=None):
             if auto_select is not None:
                 break
         elif choice == "4":
+            test_sdl2_window()
+            if auto_select is not None:
+                break
+        elif choice == "5":
+            test_sdl2_egl()
+            if auto_select is not None:
+                break
+        elif choice == "6":
             show_diagnostics()
             if auto_select is not None:
                 break

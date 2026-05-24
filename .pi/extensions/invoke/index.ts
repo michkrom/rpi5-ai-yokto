@@ -8,7 +8,7 @@
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-const LEVELS = ["core", "wayland", "chrome", "quake3"] as const;
+const LEVELS = ["base", "wayland", "games", "chrome"] as const;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -161,13 +161,13 @@ export default function (pi: ExtensionAPI) {
 		label: "Build Checkout",
 		description: "Fetch layers and write config (no build). Runs in background via --detach.",
 		parameters: Type.Object({
-			level: Type.String({ description: "Build level: core, wayland, chrome, or quake3", default: "core" }),
+			level: Type.String({ description: "Build level: base, wayland, games, chrome,", default: "base" }),
 			update: Type.Boolean({ description: "Force update of layer repos", default: false }),
 			force: Type.Boolean({ description: "Overwrite existing config files", default: false }),
 			detach: Type.Boolean({ description: "Run in background (for MCP)", default: false }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
-			const level = params.level ?? "core";
+			const level = params.level ?? "base";
 			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
 				return {
 					content: [{ type: "text", text: `Unknown level '${level}'. Choose: ${LEVELS.join(", ")}` }],

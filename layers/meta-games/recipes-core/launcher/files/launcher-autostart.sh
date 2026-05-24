@@ -2,7 +2,7 @@
 # Yokto Launcher autostart - runs in weston-terminal after Weston starts
 # This is sourced from /etc/profile.d so it runs once per login session
 
-# Check for Wayland socket - either global or user-specific
+# Check for Wayland socket - either global or user-specific  
 has_socket=0
 if [ -S "/run/wayland-0" ]; then
     has_socket=1
@@ -28,7 +28,7 @@ export LAUNCHER_STARTED=1
 # Fix permissions on log file if needed (runs as root first)
 [ -f /tmp/launcher.log ] && chmod 666 /tmp/launcher.log 2>/dev/null
 
-# Run launcher in weston-terminal fullscreen
+# Run launcher in weston-terminal fullscreen (blocking - one shot)
 echo "launcher: starting weston-terminal" >> /tmp/launcher.log
 echo "launcher: WAYLAND_DISPLAY=$WAYLAND_DISPLAY" >> /tmp/launcher.log
-/usr/bin/weston-terminal --fullscreen -- /usr/bin/launcher &
+exec /usr/bin/weston-terminal --fullscreen -- /usr/bin/launcher
