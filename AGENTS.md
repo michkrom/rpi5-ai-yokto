@@ -123,3 +123,24 @@ These layers in `layers/` are OUR custom code (not downloaded by kas):
 - `layers/meta-base/` - Base yokto recipes (SWU, graphics fixes)
 
 All other `layers/*` entries are cloned by kas and gitignored.
+
+## SSH Configuration for Target Device Connection
+
+When connecting to the Raspberry Pi 5 target device, you may see warnings about post-quantum key exchange algorithms. These are informational only and don't affect functionality. To suppress these warnings, you can configure your SSH client:
+
+Create or update `~/.ssh/config` with:
+```
+Host 192.168.68.*
+    User root
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel QUIET
+```
+
+This configuration will:
+- Automatically connect as root to devices in the 192.168.68.* range
+- Skip host key checking (useful when flashing frequently)
+- Suppress known host file operations
+- Set log level to QUIET to suppress warnings
+
+> **Note:** This SSH configuration is user-specific and should not be committed to the repository since it contains user-specific settings.
