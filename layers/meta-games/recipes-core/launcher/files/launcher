@@ -352,6 +352,14 @@ def test_sdl2_egl():
     print("\nTesting SDL2 EGL initialization and rendering...")
     run_test("/usr/bin/sdl2-egl-test", "sdl2-egl-test")
 
+def test_sdl2_renderer():
+    """Test SDL2 renderer (chocolate-doom style)"""
+    print("=" * 60)
+    print("SDL2 Renderer Test")
+    print("=" * 60)
+    print("\nTesting SDL2 renderer (chocolate-doom style, no OpenGL context)...")
+    run_test("/usr/bin/sdl2-renderer-test", "sdl2-renderer-test")
+
 def show_diagnostics():
     """Show system diagnostics"""
     print("=" * 60)
@@ -378,7 +386,7 @@ def show_diagnostics():
                 print(f"    Missing libs: {', '.join(missing)}")
     
     print("\nTest binaries:")
-    for binary in ["/usr/bin/egl-test", "/usr/bin/sdl2-window-test", "/usr/bin/sdl2-egl-test"]:
+    for binary in ["/usr/bin/egl-test", "/usr/bin/sdl2-window-test", "/usr/bin/sdl2-egl-test", "/usr/bin/sdl2-renderer-test"]:
         path = Path(binary)
         status = "✓ installed" if path.exists() else "✗ not found"
         print(f"  {binary}: {status}")
@@ -420,7 +428,8 @@ def main_menu(auto_select=None):
 3) Test EGL (egl-test)
 4) Test SDL2 Window (sdl2-window-test)
 5) Test SDL2 EGL (sdl2-egl-test)
-6) System Diagnostics
+6) Test SDL2 Renderer (sdl2-renderer-test)
+7) System Diagnostics
 0) Exit
 """
         print(menu)
@@ -455,6 +464,10 @@ def main_menu(auto_select=None):
             if auto_select is not None:
                 break
         elif choice == "6":
+            test_sdl2_renderer()
+            if auto_select is not None:
+                break
+        elif choice == "7":
             show_diagnostics()
             if auto_select is not None:
                 break
