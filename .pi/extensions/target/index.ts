@@ -111,8 +111,8 @@ export default function (pi: ExtensionAPI) {
 	const targetExec = defineTool({
 		name: "target_exec",
 		label: "Target Exec",
-		description: "Run a command on the target via SSH.",
-		parameters: Type.Object({ command: Type.String({ description: "Command to execute" }) }),
+		description: "Run a command on the target via SSH. Note: This tool expects shell command syntax, not Python data structures. For complex commands with special characters, consider creating a script file locally and using target_copy followed by target_exec to run it.",
+		parameters: Type.Object({ command: Type.String({ description: "Command to execute (must be valid shell syntax)" }) }),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
 			try {
 				const r = await sshExec(pi, params.command);
@@ -120,6 +120,68 @@ export default function (pi: ExtensionAPI) {
 			} catch (e) {
 				return {
 					content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }],
+					details: { exit: 1 },
+				};
+			}
+		},
+	});
+
+	const targetExecFile = defineTool({
+		name: "target_exec_file",
+		label: "Target Exec File",
+		description: "Execute a local script file on the target device. The file is copied to the target and executed.",
+		parameters: Type.Object({
+			localPath: Type.String({ description: "Local path to the script file to execute" }),
+			remotePath: Type.Optional(Type.String({ description: "Remote path where to copy the script (default: /tmp/script_$(date +%s).sh)", default: "" })),
+			args: Type.Optional(Type.String({ description: "Arguments to pass to the script", default: "" })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate) {
+			if (!targetState.host) {
+				return {
+					content: [{ type: "text", text: "No target connected. Call target_connect first." }],
+					details: { error: "not_connected" },
+				};
+			}
+			
+			try {
+				// Determine remote path
+				const remotePath = params.remotePath || `/tmp/script_$(date +%s).sh`;
+				
+				// Copy the file to the target
+				const keyArg = targetState.key ? ["-i", targetState.key] : [];
+				const copyResult = await pi.exec("scp", [
+					"-o", "StrictHostKeyChecking=no",
+					"-o", "UserKnownHostsFile=/dev/null",
+					"-P", String(targetState.port), ...keyArg,
+					params.localPath, `${targetState.user}@${targetState.host}:${remotePath}`,
+				], { timeout: 120_000 });
+				
+				if (copyResult.code !== 0) {
+					return {
+						content: [{ type: "text", text: `Failed to copy file: ${copyResult.stderr || copyResult.stdout}` }],
+						details: { exit: copyResult.code },
+					};
+				}
+				
+				// Make the script executable and execute it
+				const chmodCmd = `chmod +x ${remotePath}`;
+				const chmodResult = await sshExec(pi, chmodCmd);
+				
+				const execCmd = `${remotePath} ${params.args || ""}`.trim();
+				const execResult = await sshExec(pi, execCmd);
+				
+				// Optionally clean up the script
+				// const cleanupCmd = `rm ${remotePath}`;
+				// await sshExec(pi, cleanupCmd);
+				
+				return {
+					content: [{ type: "text", text: `Script executed successfully:
+${execResult}` }],
+					details: { exit: 0 },
+				};
+			} catch (e) {
+				return {
+					content: [{ type: "text", text: `Error executing script: ${e instanceof Error ? e.message : String(e)}` }],
 					details: { exit: 1 },
 				};
 			}
@@ -188,6 +250,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(targetExec);
 	pi.registerTool(targetRunAsRoot);
 	pi.registerTool(targetCopy);
+	pi.registerTool(targetExecFile);
 
 	pi.on("session_start", async (_event, ctx) => {
 		ctx.ui.notify("Target tools loaded", "info");

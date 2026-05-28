@@ -5,7 +5,9 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = "file://egl-test.c"
 
-DEPENDS = "virtual/egl wayland virtual/libgles2"
+DEPENDS = "virtual/egl wayland virtual/libgles2 wayland-protocols"
+
+CFLAGS += "-I${STAGING_INCDIR}/wayland-protocols"
 
 do_compile() {
     ${CC} ${CFLAGS} ${WORKDIR}/egl-test.c -o ${B}/egl-test ${LDFLAGS} -lEGL -lwayland-egl -lwayland-client -lGLESv2 -lm

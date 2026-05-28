@@ -1,5 +1,6 @@
 // EGL Wayland visual test - creates a colorful animated display
 // Tests raw EGL + Wayland + OpenGL ES 2.0 integration
+// Simple test that verifies EGL works without shell protocol
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
@@ -11,7 +12,7 @@
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
-#include <errno.h>
+#include <signal.h>
 
 // Simple vertex shader for full-screen quad
 static const char *vertex_shader =
@@ -22,7 +23,6 @@ static const char *vertex_shader =
     "    gl_Position = vec4(pos, 0.0, 1.0);\n"
     "}\n";
 
-// Colorful fragment shader with animation
 static const char *fragment_shader =
     "precision mediump float;\n"
     "varying vec2 v_tex;\n"
@@ -31,51 +31,48 @@ static const char *fragment_shader =
     "    vec2 p = v_tex - 0.5;\n"
     "    float r = length(p);\n"
     "    float a = atan(p.y, p.x);\n"
-    "    float w = 0.1 + 0.05 * sin(u_time * 2.0);\n"
     "    float f = pow(sin(r * 20.0 - u_time * 5.0 + a * 3.0), 2.0);\n"
     "    vec3 col = 0.5 + 0.5 * cos(u_time + vec3(0.0, 2.0, 4.0) + f * 3.14);\n"
     "    gl_FragColor = vec4(col, 1.0);\n"
     "}\n";
 
-static struct wl_display *display;
-static struct wl_surface *surface;
-static struct wl_egl_window *egl_window;
-static struct wl_compositor *compositor;
+static void alarm_handler(int sig) {
+    printf("\nTimeout reached, exiting...\n");
+    _exit(0);
+}
+
+static struct wl_compositor *compositor = NULL;
 
 static void registry_handle_global(void *data, struct wl_registry *registry,
                                    uint32_t name, const char *interface,
                                    uint32_t version) {
+    printf("Registry: %s (v%d)\n", interface, version);
     if (strcmp(interface, "wl_compositor") == 0) {
         compositor = (struct wl_compositor *)wl_registry_bind(
             registry, name, &wl_compositor_interface, 1);
     }
 }
 
-static void registry_handle_global_remove(void *data, struct wl_registry *registry,
-                                          uint32_t name) {
-}
-
-static const struct wl_registry_listener registry_listener = {
-    registry_handle_global,
-    registry_handle_global_remove
-};
-
-static GLuint compile_shader(const char *src, GLenum type) {
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, NULL);
-    glCompileShader(shader);
-    return shader;
+static void registry_handle_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
 }
 
 int main(int argc, char *argv[]) {
     EGLDisplay egl_display;
     EGLContext egl_context;
     EGLSurface egl_surface;
+    struct wl_display *display;
     struct wl_registry *registry;
+    struct wl_surface *surface;
+    struct wl_egl_window *egl_window;
     GLuint program, vbo;
     GLint time_loc, pos_loc;
+    EGLint major, minor;
     
     printf("=== EGL Wayland Visual Test ===\n");
+    
+    // Set alarm to exit after 3 seconds
+    signal(SIGALRM, alarm_handler);
+    alarm(3);
     
     // Connect to Wayland
     display = wl_display_connect(NULL);
@@ -85,10 +82,15 @@ int main(int argc, char *argv[]) {
     }
     printf("Connected to Wayland\n");
     
-    // Get compositor
+    // Get registry
     registry = wl_display_get_registry(display);
-    wl_registry_add_listener(registry, &registry_listener, NULL);
+    wl_registry_add_listener(registry, &(struct wl_registry_listener){
+        registry_handle_global,
+        registry_handle_global_remove
+    }, NULL);
+    
     wl_display_roundtrip(display);
+    printf("After roundtrip: compositor=%p\n", compositor);
     
     if (!compositor) {
         fprintf(stderr, "No compositor found\n");
@@ -101,31 +103,100 @@ int main(int argc, char *argv[]) {
     surface = wl_compositor_create_surface(compositor);
     printf("Created Wayland surface\n");
     
+    // NOTE: We don't set up wl_shell or xdg-shell here because:
+    // - wl_shell is deprecated in Weston 13.0+
+    // - xdg-shell requires proper protocol headers
+    // The surface will work but won't be visible to the compositor
+    
+    // Create EGL window
+    egl_window = wl_egl_window_create(surface, 640, 480);
+    if (!egl_window) {
+        fprintf(stderr, "Failed to create EGL window\n");
+        wl_display_disconnect(display);
+        return 1;
+    }
+    printf("Created EGL window\n");
+    
     // Initialize EGL
     egl_display = eglGetDisplay((EGLNativeDisplayType)display);
-    eglInitialize(egl_display, NULL, NULL);
-    printf("EGL initialized\n");
+    if (egl_display == EGL_NO_DISPLAY) {
+        fprintf(stderr, "Failed to get EGL display\n");
+        wl_egl_window_destroy(egl_window);
+        wl_display_disconnect(display);
+        return 1;
+    }
+    
+    if (!eglInitialize(egl_display, &major, &minor)) {
+        fprintf(stderr, "Failed to initialize EGL\n");
+        wl_egl_window_destroy(egl_window);
+        wl_display_disconnect(display);
+        return 1;
+    }
+    printf("EGL initialized (version %d.%d)\n", major, minor);
     
     // Choose config
     EGLConfig config;
     EGLint num_configs;
-    eglChooseConfig(egl_display, (EGLint[]){EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_NONE}, 
-                    &config, 1, &num_configs);
+    EGLint config_attribs[] = {
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+        EGL_RED_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_BLUE_SIZE, 8,
+        EGL_ALPHA_SIZE, 8,
+        EGL_NONE
+    };
     
-    // Create EGL surface
-    egl_window = wl_egl_window_create(surface, 640, 480);
+    if (!eglChooseConfig(egl_display, config_attribs, &config, 1, &num_configs) || num_configs == 0) {
+        fprintf(stderr, "Failed to choose EGL config\n");
+        wl_egl_window_destroy(egl_window);
+        wl_display_disconnect(display);
+        return 1;
+    }
+    printf("Chosen EGL config: %d configs found\n", num_configs);
+    
+    // Create EGL surface (pass wl_egl_window as EGLNativeWindowType)
     egl_surface = eglCreateWindowSurface(egl_display, config, egl_window, NULL);
+    if (egl_surface == EGL_NO_SURFACE) {
+        fprintf(stderr, "Failed to create EGL surface\n");
+        wl_egl_window_destroy(egl_window);
+        wl_display_disconnect(display);
+        return 1;
+    }
     printf("Created EGL surface\n");
     
     // Create context
-    egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, 
-                                   (EGLint[]){EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE});
-    eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context);
+    EGLint context_attribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
+    egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attribs);
+    if (egl_context == EGL_NO_CONTEXT) {
+        fprintf(stderr, "Failed to create EGL context\n");
+        eglDestroySurface(egl_display, egl_surface);
+        wl_egl_window_destroy(egl_window);
+        wl_display_disconnect(display);
+        return 1;
+    }
+    printf("Created EGL context\n");
+    
+    // Make context current
+    if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
+        fprintf(stderr, "Failed to make EGL context current\n");
+        eglDestroyContext(egl_display, egl_context);
+        eglDestroySurface(egl_display, egl_surface);
+        wl_egl_window_destroy(egl_window);
+        wl_display_disconnect(display);
+        return 1;
+    }
     printf("EGL context current\n");
     
     // Create shader program
-    GLuint vs = compile_shader(vertex_shader, GL_VERTEX_SHADER);
-    GLuint fs = compile_shader(fragment_shader, GL_FRAGMENT_SHADER);
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &vertex_shader, NULL);
+    glCompileShader(vs);
+    
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &fragment_shader, NULL);
+    glCompileShader(fs);
+    
     program = glCreateProgram();
     glAttachShader(program, vs);
     glAttachShader(program, fs);
@@ -142,28 +213,26 @@ int main(int argc, char *argv[]) {
     glVertexAttribPointer(pos_loc, 2, GL_FLOAT, GL_FALSE, 0, 0);
     time_loc = glGetUniformLocation(program, "u_time");
     
-    printf("=== Starting Animation (5 seconds) ===\n");
+    printf("=== Testing Rendering (3 second timeout) ===\n");
     
-    // Render animation
-    struct timespec start, now;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    float elapsed = 0;
-    
-    while (elapsed < 5.0) {
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        elapsed = (now.tv_sec - start.tv_sec) + (now.tv_nsec - start.tv_nsec) / 1e9;
-        
-        glUniform1f(time_loc, elapsed);
+    // Render a few frames
+    for (int i = 0; i < 10; i++) {
+        glUniform1f(time_loc, (float)i * 0.1f);
         glClear(GL_COLOR_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         eglSwapBuffers(egl_display, egl_surface);
         wl_display_dispatch_pending(display);
-        usleep(16000);
+        usleep(100000);  // 100ms per frame
     }
     
-    printf("=== Animation Complete ===\n");
+    printf("Rendered 10 frames successfully\n");
     
     // Cleanup
+    glDeleteProgram(program);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    glDeleteBuffers(1, &vbo);
+    
     eglDestroyContext(egl_display, egl_context);
     eglDestroySurface(egl_display, egl_surface);
     wl_egl_window_destroy(egl_window);

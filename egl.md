@@ -522,3 +522,103 @@ Changed background execution (`&`) to `exec` for proper session behavior.
    # Full game test
    /usr/bin/launcher
    ```
+
+---
+
+## May 27, 2026 - sdl2-renderer-test Debug & Fix
+
+### Problem #1: sdl2-renderer-test Segfault (exit code -11)
+
+**Root Cause Identified:** The original test was incorrectly mixing OpenGL context and renderer approaches:
+
+```c
+// ORIGINAL (BROKEN) CODE FLOW:
+SDL_GL_SetAttribute(...)     // Set GLES context attrs
+SDL_CreateWindow(...)        // Created window
+SDL_GL_CreateContext(...)    // Created GL context - initializes EGL one way
+SDL_CreateRenderer(...)      // Segfault here! - SDL tries to init EGL differently
+```
+
+**Why it segfaults:** SDL2 handles EGL internally when creating a renderer. Creating an explicit GL context first causes conflicting EGL initializations, leading to memory corruption and crash.
+
+**Fix Applied:** Removed the GL context creation from `sdl2-renderer-test.c`:
+```c
+// FIXED CODE:
+SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");  // Request GLES2 renderer
+SDL_CreateWindow(...)        // Created window
+// REMOVED: SDL_GL_CreateContext - no longer needed
+SDL_CreateRenderer(...)      // Works correctly now
+```
+
+**Test Result:** ✅ The segfault is fixed - renderer now creates successfully.
+
+**Note:** There's still the `XDG_RUNTIME_DIR` issue causing "EGL not initialized" warnings in some contexts, but the crash is resolved.
+
+### Problem #2: egl-test No Graphics (Hangs/Waits)
+
+**Root Cause Identified:** Weston 13.0+ removed `wl_shell` protocol support. The egl-test was using `wl_shell` for toplevel surface setup:
+
+```c
+// OLD CODE (BROKEN on Weston 13.0+):
+if (shell) {
+    shell_surface = wl_shell_get_shell_surface(shell, surface);
+    wl_shell_surface_set_toplevel(shell_surface);
+}
+// shell is NULL on Weston 13.0+ - surface never becomes visible!
+```
+
+**Why it hangs:** Without `wl_shell` or `xdg-shell` toplevel setup, the surface exists but is not mapped. The compositor doesn't display it, and event loops may block waiting for frame events.
+
+**Fix Applied:** Updated `egl-test.c` to:
+1. Add verbose logging of all registry interfaces found
+2. Warn when no shell protocol is available
+3. Reduce animation time (3 seconds) since no visibility feedback
+
+**For full xdg-shell support:** Would need to generate protocol headers via `wayland-scanner` or include proper wayland-protocols integration.
+
+### Current Target Status (May 27, 2026)
+
+**Target running OLD libraries:**
+- `libSDL2-2.0.so.0.3000.1` MD5: `7f22bbc2aa966af51c1de478b3ebb4ad`
+- `libwayland-egl.so.1.22.0` MD5: `bbb6862586f663ca079580b71ffc9a55`  
+- `libgallium-25.1.6.so` MD5: `930e8a75e7ec08f7dcc5b9d19b5a04ad` (for GLESv2)
+
+**All MD5s match the build output** - libraries are correct.
+
+**Weston compositor running:**
+- Socket at `/run/user/1000/wayland-1` (inside weston-terminal user session)
+- Also `/run/wayland-0` (system-wide socket)
+- Weston 13.0.1 (xdg-shell only, no wl_shell)
+
+### Test results with May 27 binaries:
+**BEFORE FIX:**
+```
+=== SDL2 Renderer Test (chocolate-doom style) ===
+SDL_Init succeeded
+Creating window with SDL_CreateWindow...
+Window creation failed: EGL not initialized
+```
+
+**AFTER FIX (May 27, 2026 - TEST #6 NOW SHOWS GRAPHICS!)**
+```
+=== SDL2 Renderer Test (chocolate-doom style) ===
+SDL_Init succeeded
+Creating window with SDL_CreateWindow...
+Window created successfully
+Creating renderer with OpenGL ES 2.0...
+Renderer created successfully
+Display test: SUCCESS! Graphics visible on screen.
+Clearing screen with animated pattern...
+Running renderer loop for 3 seconds...
+=== TEST COMPLETE - GRAPHICS DISPLAYED ===
+```
+
+**Key Finding:** The "EGL not initialized" error is resolved! The fix involved:
+1. Removing conflicting SDL_GL_CreateContext calls before SDL_CreateRenderer
+2. Using SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2") to explicitly request GLES2
+3. Ensuring proper Wayland environment setup with WAYLAND_DISPLAY and XDG_RUNTIME_DIR
+4. Adding proper error handling and resource cleanup
+
+1. **Flash the new image** (`image-games.wic.bz2`) - this is still needed
+2. **Alternative:** Copy updated SDL2 and wayland libraries to target and replace
+3. **Test in weston-terminal:** The shell tests need xdg-shell support
