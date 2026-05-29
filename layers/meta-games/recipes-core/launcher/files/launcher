@@ -124,8 +124,10 @@ def ensure_doom_data():
 def get_wayland_env():
     """Get Wayland environment variables"""
     env = os.environ.copy()
+    
+    # Core SDL2 Wayland/EGL environment variables
     env["SDL_VIDEODRIVER"] = "wayland"
-    env["SDL_RENDER_DRIVER"] = "opengles2"  # Available environment variable
+    env["SDL_RENDER_DRIVER"] = "opengles2"
     
     # Try to find Wayland socket
     wayland_found = False
