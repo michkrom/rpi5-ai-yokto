@@ -1,11 +1,12 @@
 // EGL Wayland visual test - creates a colorful animated display
 // Tests raw EGL + Wayland + OpenGL ES 2.0 integration
-// Simple test that verifies EGL works without shell protocol
+// Uses xdg-shell for proper surface visibility on Weston 13.0+
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <wayland-client.h>
 #include <wayland-egl.h>
+#include "xdg-shell-client-protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,40 @@ static void alarm_handler(int sig) {
 }
 
 static struct wl_compositor *compositor = NULL;
+static struct xdg_wm_base *xdg_wm_base = NULL;
+static struct xdg_surface *xdg_surface = NULL;
+static struct xdg_toplevel *xdg_toplevel = NULL;
+static struct wl_egl_window *global_egl_window = NULL;  // For configure callback
+
+// XDG toplevel event listeners
+static void xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
+                                   int32_t width, int32_t height,
+                                   struct wl_array *states) {
+    // Apply new size to EGL window if needed
+    if (width > 0 && height > 0 && global_egl_window) {
+        wl_egl_window_resize(global_egl_window, width, height, 0, 0);
+    }
+}
+
+static void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) {
+    // Window close requested - exit program
+    printf("Window close requested\n");
+    _exit(0);
+}
+
+static const struct xdg_toplevel_listener xdg_toplevel_listener = {
+    .configure = xdg_toplevel_configure,
+    .close = xdg_toplevel_close,
+};
+
+// XDG surface event listeners
+static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial) {
+    xdg_surface_ack_configure(xdg_surface, serial);
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+    .configure = xdg_surface_configure,
+};
 
 static void registry_handle_global(void *data, struct wl_registry *registry,
                                    uint32_t name, const char *interface,
@@ -50,6 +85,9 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
     if (strcmp(interface, "wl_compositor") == 0) {
         compositor = (struct wl_compositor *)wl_registry_bind(
             registry, name, &wl_compositor_interface, 1);
+    } else if (strcmp(interface, "xdg_wm_base") == 0) {
+        xdg_wm_base = (struct xdg_wm_base *)wl_registry_bind(
+            registry, name, &xdg_wm_base_interface, 1);
     }
 }
 
@@ -103,12 +141,7 @@ int main(int argc, char *argv[]) {
     surface = wl_compositor_create_surface(compositor);
     printf("Created Wayland surface\n");
     
-    // NOTE: We don't set up wl_shell or xdg-shell here because:
-    // - wl_shell is deprecated in Weston 13.0+
-    // - xdg-shell requires proper protocol headers
-    // The surface will work but won't be visible to the compositor
-    
-    // Create EGL window
+    // Create EGL window first so we can pass it to the configure handler
     egl_window = wl_egl_window_create(surface, 640, 480);
     if (!egl_window) {
         fprintf(stderr, "Failed to create EGL window\n");
@@ -116,6 +149,23 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     printf("Created EGL window\n");
+    
+    // Set up xdg-shell toplevel (needed for visibility on Weston 13.0+)
+    if (xdg_wm_base) {
+        global_egl_window = egl_window;  // Set global for configure callback
+        xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, surface);
+        xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
+        xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+        xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
+        xdg_toplevel_set_title(xdg_toplevel, "EGL Wayland Visual Test");
+        printf("Set up xdg-shell toplevel\n");
+        // Commit the surface to make it visible
+        wl_surface_commit(surface);
+        // Dispatch to get configure events
+        wl_display_roundtrip(display);
+    } else {
+        printf("No xdg_wm_base - surface won't be visible\n");
+    }
     
     // Initialize EGL
     egl_display = eglGetDisplay((EGLNativeDisplayType)display);
@@ -156,7 +206,8 @@ int main(int argc, char *argv[]) {
     printf("Chosen EGL config: %d configs found\n", num_configs);
     
     // Create EGL surface (pass wl_egl_window as EGLNativeWindowType)
-    egl_surface = eglCreateWindowSurface(egl_display, config, egl_window, NULL);
+    // Note: We use the already-created egl_window
+    egl_surface = eglCreateWindowSurface(egl_display, config, (EGLNativeWindowType)egl_window, NULL);
     if (egl_surface == EGL_NO_SURFACE) {
         fprintf(stderr, "Failed to create EGL surface\n");
         wl_egl_window_destroy(egl_window);

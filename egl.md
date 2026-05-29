@@ -622,3 +622,54 @@ Running renderer loop for 3 seconds...
 1. **Flash the new image** (`image-games.wic.bz2`) - this is still needed
 2. **Alternative:** Copy updated SDL2 and wayland libraries to target and replace
 3. **Test in weston-terminal:** The shell tests need xdg-shell support
+
+---
+
+## May 27, 2026 - EGL Test xdg-shell Fix Complete
+
+### Problem Fixed: egl-test Now Shows Graphics ✅
+
+**Root Cause:** The original `egl-test.c` was missing xdg-shell protocol support, which is required for window visibility on Weston 13.0+ (wl_shell was removed).
+
+**Changes Applied:**
+
+1. **Added xdg-shell protocol files:**
+   - `xdg-shell-client-protocol.h` - Pre-generated client protocol headers
+   - `xdg-shell-protocol.c` - Protocol implementation stubs
+
+2. **Updated egl-test.c to use xdg-shell:**
+   - Added registry binding for `xdg_wm_base`
+   - Created `xdg_surface` and `xdg_toplevel` for proper window management
+   - Added event listeners for configure and close events
+   - Called `wl_surface_commit()` to make the surface visible
+   - Updated `egl-test.bb` to compile the protocol stubs
+
+3. **Build Configuration:**
+   - Added `wayland-protocols` to DEPENDS in the recipe
+   - Included protocol source files in compilation
+
+**Result:** The direct EGL test now properly displays graphics on Weston 13.0+
+
+### Chocolate Doom Still Has Issues ❌
+
+**Status:** Despite EGL tests showing graphics correctly, `chocolate-doom` still fails with "EGL not initialized" error.
+
+**Investigation Notes:**
+- SDL2 renderer test (option #6 in launcher) works correctly
+- Direct EGL test (option #3) now shows graphics
+- Chocolate Doom uses a different initialization path that may still have issues
+
+**Next Steps:**
+1. Test chocolate-doom with SDL_LOG_PRIORITY=verbose to get more diagnostic information
+2. Check if chocolate-doom is using SDL_WINDOW_OPENGL flag incorrectly
+3. Verify if there are additional SDL2 hints needed for chocolate-doom specifically
+4. Consider using SDL_RENDERER flags instead of OpenGL context for compatibility
+
+### Summary
+
+The EGL/Wayland/Mesa stack is now confirmed working:
+- ✅ Raw EGL test shows animated graphics
+- ✅ SDL2 renderer test shows graphics  
+- ✅ All DRI drivers and libraries are present
+
+The remaining chocolate-doom issue is specific to its EGL initialization approach and may require additional SDL2 configuration or code changes.
