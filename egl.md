@@ -741,3 +741,44 @@ invoke flash --device /dev/sdb --games
 ```
 
 Or copy the chocolate-doom binary and wrapper to a running target to test.
+
+---
+
+## May 29, 2026 - Runtime Testing Results
+
+### Test Results on Target (192.168.68.61)
+
+**EGL Test (option 3) - WORKING ✅**
+- Displays animated graphics properly with xdg-shell
+- Uses direct EGL/OpenGL calls with proper Wayland integration
+
+**SDL2 Renderer Test (option 6) - PARTIAL ❌**
+- Shows error: "Error creating window for video startup: EGL not initialized"
+- This confirms the issue: window created WITHOUT SDL_WINDOW_OPENGL flag
+- SDL2 cannot initialize EGL without the OpenGL flag on Wayland
+
+**Chocolate Doom - PROGRESS ❌**
+- Error changed from "EGL not initialized" to "Could not initialize OpenGL / GLES library"
+- The SDL_WINDOW_OPENGL patch is having effect!
+- Still failing because SDL2 Wayland backend needs EGL to be loaded dynamically
+
+### Root Cause Analysis
+
+SDL2 on this system:
+- Built with `SDL_OPENGL=ON` and `SDL_OPENGLES=ON`
+- NOT directly linked to libEGL or libGLES (uses dynamic loading)
+- Wayland compositor (weston) HAS EGL/GLES loaded and working
+- SDL2 must dynamically load EGL when creating an OpenGL window
+
+The SDL2 renderer test fails because:
+1. It doesn't use `SDL_WINDOW_OPENGL` flag (replicating chocolate-doom)
+2. SDL2 internally needs to load EGL for Wayland backend
+3. Without the flag, SDL2 doesn't attempt EGL initialization
+
+### Solution
+
+The chocolate-doom patch adding `SDL_WINDOW_OPENGL` is correct. The remaining issue is that 
+SDL2 cannot find/initialize the OpenGL ES library. This may require:
+1. Ensuring libEGL and libGLES are in the library search path
+2. Setting `EGL_PLATFORM=surfaceless` or similar
+3. Using the new image which has the properly configured libraries
