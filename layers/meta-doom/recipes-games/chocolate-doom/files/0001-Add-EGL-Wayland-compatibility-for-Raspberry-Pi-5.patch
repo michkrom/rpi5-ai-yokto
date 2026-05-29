@@ -1,0 +1,23 @@
+--- a/src/i_video.c
++++ b/src/i_video.c
+@@ -1438,6 +1438,12 @@ int I_InitGraphics(void)
+     // Allow a default value for the SDL video driver to be specified
+     // in the configuration file.
+     SetSDLVideoDriver();
++
++    // Set hints for Wayland/EGL compatibility
++    SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
++    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
++    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
++    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+ 
+     if (SDL_Init(SDL_INIT_VIDEO) < 0) 
+     {
+@@ -1202,6 +1208,7 @@ static void SetVideoMode(void)
+     // In windowed mode, the window can be resized while the game is
+     // running.
+     window_flags = SDL_WINDOW_RESIZABLE;
++    window_flags |= SDL_WINDOW_OPENGL;  // Needed for EGL initialization on Wayland
+ 
+     // Set the highdpi flag - this makes a big difference on Macs with
+     // retina displays, especially when using small window sizes.

@@ -619,6 +619,16 @@ Running renderer loop for 3 seconds...
 3. Ensuring proper Wayland environment setup with WAYLAND_DISPLAY and XDG_RUNTIME_DIR
 4. Adding proper error handling and resource cleanup
 
+### Chocolate Doom Still Fails - Solution Applied ✅
+
+**Root Cause:** Chocolate Doom does not set the necessary SDL2 hints for Wayland/EGL compatibility.
+
+**Fix:** Created a wrapper script (`chocolate-doom-wrapper.sh`) that sets:
+- `SDL_VIDEODRIVER=wayland` - Forces Wayland backend
+- `SDL_RENDER_DRIVER=opengles2` - Forces OpenGL ES 2.0 renderer
+
+This ensures chocolate-doom initializes correctly with the EGL/Wayland stack.
+
 1. **Flash the new image** (`image-games.wic.bz2`) - this is still needed
 2. **Alternative:** Copy updated SDL2 and wayland libraries to target and replace
 3. **Test in weston-terminal:** The shell tests need xdg-shell support
