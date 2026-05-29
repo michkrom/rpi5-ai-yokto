@@ -125,19 +125,29 @@ def get_wayland_env():
     """Get Wayland environment variables"""
     env = os.environ.copy()
     env["SDL_VIDEODRIVER"] = "wayland"
-    env["SDL_RENDER_DRIVER"] = "opengles2"  # Force GLES2 renderer for Wayland compatibility
+    env["SDL_RENDER_DRIVER"] = "opengles2"  # Available environment variable
     
+    # Try to find Wayland socket
+    wayland_found = False
     if Path("/run/wayland-0").exists():
         env["WAYLAND_DISPLAY"] = "/run/wayland-0"
-    elif "WAYLAND_DISPLAY" not in env and "DISPLAY" not in env:
+        wayland_found = True
+    
+    if not wayland_found and "WAYLAND_DISPLAY" not in env and "DISPLAY" not in env:
         for user_path in Path("/run/user").iterdir():
             for sock_name in ["wayland-0", "wayland-1"]:
                 sock = user_path / sock_name
                 if sock.exists():
                     env["WAYLAND_DISPLAY"] = str(sock)
+                    wayland_found = True
                     break
-            if "WAYLAND_DISPLAY" in env:
+            if wayland_found:
                 break
+    
+    if not wayland_found and "WAYLAND_DISPLAY" not in env:
+        # Try default socket path
+        env["WAYLAND_DISPLAY"] = "wayland-0"
+    
     return env
 
 def get_network_info():
@@ -269,8 +279,10 @@ def launch_doom(auto_download=True):
     
     env = get_wayland_env()
     print("Launching chocolate-doom...")
+    print(f"  Binary: {binary}")
     print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
     print(f"  SDL_RENDER_DRIVER={env.get('SDL_RENDER_DRIVER', 'not set')}")
+    print(f"  WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY', 'not set')}")
     result = subprocess.run([binary], env=env)
     print(f"chocolate-doom exited with code {result.returncode}")
     if not AUTO_SELECT_MODE:
