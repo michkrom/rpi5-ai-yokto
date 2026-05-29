@@ -11,7 +11,9 @@ SRC_URI = "git://github.com/chocolate-doom/chocolate-doom.git;protocol=https;bra
            file://chocolate-doom.desktop \
            file://COPYING.md \
            file://chocolate-doom-wrapper.sh \
+           file://0001-Add-EGL-Wayland-compatibility-for-Raspberry-Pi-5.patch \
 "
+RDEPENDS:${PN} += "bash"
 SRCREV = "9e731e2b2b03d361a477f4c0ce4da830c1a71312"
 PV = "3.0.1+git${SRCPV}"
 
