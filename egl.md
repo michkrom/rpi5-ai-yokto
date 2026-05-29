@@ -619,15 +619,44 @@ Running renderer loop for 3 seconds...
 3. Ensuring proper Wayland environment setup with WAYLAND_DISPLAY and XDG_RUNTIME_DIR
 4. Adding proper error handling and resource cleanup
 
-### Chocolate Doom Still Fails - Solution Applied ✅
+## May 27, 2026 - Chocolate Doom Investigation
 
-**Root Cause:** Chocolate Doom does not set the necessary SDL2 hints for Wayland/EGL compatibility.
+### Chocolate Doom Still Fails - Next Steps
 
-**Fix:** Created a wrapper script (`chocolate-doom-wrapper.sh`) that sets:
-- `SDL_VIDEODRIVER=wayland` - Forces Wayland backend
-- `SDL_RENDER_DRIVER=opengles2` - Forces OpenGL ES 2.0 renderer
+**Key Insight:** Chocolate Doom works when built locally but fails on the Yocto target. This indicates:
+1. The compositor/window manager environment is different
+2. The exact window creation sequence matters (no SDL_WINDOW_OPENGL flag)
+3. Additional SDL hints/attributes may be needed
 
-This ensures chocolate-doom initializes correctly with the EGL/Wayland stack.
+**Root Cause Analysis:**
+- Chocolate Doom creates windows with `SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI` (no `SDL_WINDOW_OPENGL`)
+- It defaults to fullscreen mode (`fullscreen=true`)
+- It doesn't call `SDL_GL_SetAttribute()` before `SDL_CreateWindow()`
+
+**Fixes Applied:**
+1. Updated `sdl2-renderer-test.c` to replicate chocolate-doom's EXACT window flags
+2. Created patch for chocolate-doom to add EGL/Wayland compatibility
+3. Created wrapper script with proper environment setup
+
+**Next Steps:**
+1. Rebuild the games image with the updated chocolate-doom patch
+2. Flash the new image to the target
+3. Test chocolate-doom with verbose logging to diagnose the exact failure
+
+### Test Sequence Comparison
+
+**Working Test (sdl2-renderer-test with SDL_WINDOW_OPENGL):**
+- Uses `SDL_WINDOW_OPENGL` flag
+- Applies `SDL_GL_SetAttribute` before window creation
+- Works correctly
+
+**Chocolate Doom Sequence:**
+- Uses `SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI` (no OpenGL flag)
+- Does NOT call `SDL_GL_SetAttribute()` before window creation
+- Defaults to fullscreen mode
+- Fails with "EGL not initialized"
+
+This suggests the issue is in SDL2's EGL initialization path when `SDL_WINDOW_OPENGL` is NOT specified.
 
 1. **Flash the new image** (`image-games.wic.bz2`) - this is still needed
 2. **Alternative:** Copy updated SDL2 and wayland libraries to target and replace
