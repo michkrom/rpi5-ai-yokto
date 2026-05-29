@@ -712,3 +712,32 @@ The EGL/Wayland/Mesa stack is now confirmed working:
 - ✅ All DRI drivers and libraries are present
 
 The remaining chocolate-doom issue is specific to its EGL initialization approach and may require additional SDL2 configuration or code changes.
+
+---
+
+## May 28, 2026 - Build Complete and Ready
+
+### Changes Made
+
+1. **Fixed egl-test** to use xdg-shell for Weston 13.0+ compatibility
+2. **Updated sdl2-renderer-test** to replicate chocolate-doom's window flags exactly
+3. **Created chocolate-doom patch** to add EGL/Wayland compatibility:
+   - Added `SDL_WINDOW_OPENGL` flag to window creation
+   - Added `SDL_GL_SetAttribute` calls for GLES2 context
+   - Added `SDL_HINT_RENDER_DRIVER` hint
+4. **Created wrapper script** that sets environment and forces windowed mode
+
+### Image Ready
+- **image-games.wic.bz2** - Built May 28, 18:58 (152MB)
+- **image-games.swu** - SWUpdate image available
+- All tests should now show graphics correctly
+- Chocolate doom should initialize properly with the patch
+
+### Action Required
+Flash the image to SD card and test:
+```bash
+# If SD card is at /dev/sdb
+invoke flash --device /dev/sdb --games
+```
+
+Or copy the chocolate-doom binary and wrapper to a running target to test.
