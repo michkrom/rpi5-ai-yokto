@@ -10,6 +10,7 @@ SRC_URI = "git://github.com/chocolate-doom/chocolate-doom.git;protocol=https;bra
            file://chocolate-doom-data-check \
            file://chocolate-doom.desktop \
            file://COPYING.md \
+           file://chocolate-doom-wrapper.sh \
 "
 SRCREV = "9e731e2b2b03d361a477f4c0ce4da830c1a71312"
 PV = "3.0.1+git${SRCPV}"
@@ -38,6 +39,8 @@ do_install() {
             install -m 0755 ${B}/src/${game} ${D}${bindir}/
         fi
     done
+    # Install wrapper script
+    install -m 0755 ${WORKDIR}/chocolate-doom-wrapper.sh ${D}${bindir}/chocolate-doom-wrapper
     install -d -m 0777 ${D}${datadir}/doom
     install -m 0755 ${WORKDIR}/chocolate-doom-data-check ${D}${bindir}/chocolate-doom-data-check
     install -d ${D}${datadir}/applications

@@ -125,6 +125,7 @@ def get_wayland_env():
     """Get Wayland environment variables"""
     env = os.environ.copy()
     env["SDL_VIDEODRIVER"] = "wayland"
+    env["SDL_RENDER_DRIVER"] = "opengles2"  # Force GLES2 renderer for Wayland compatibility
     
     if Path("/run/wayland-0").exists():
         env["WAYLAND_DISPLAY"] = "/run/wayland-0"
@@ -236,13 +237,16 @@ def launch_q3e(auto_download=True):
 
 def launch_doom(auto_download=True):
     """Launch Chocolate Doom with automatic data download"""
-    binary = "/usr/bin/chocolate-doom"
+    binary = "/usr/bin/chocolate-doom-wrapper"
+    if not Path(binary).exists():
+        binary = "/usr/bin/chocolate-doom"  # Fallback to direct binary
+    
     if not Path(binary).exists():
         print("chocolate-doom not installed")
         return False
     
     missing = check_libraries(binary)
-    if missing:
+    if missing and binary == "/usr/bin/chocolate-doom":  # Skip check for wrapper
         print("Missing libraries detected:")
         for lib in missing:
             print(f"  - {lib}")
@@ -266,7 +270,8 @@ def launch_doom(auto_download=True):
     env = get_wayland_env()
     print("Launching chocolate-doom...")
     print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
-    result = subprocess.run(["chocolate-doom"], env=env)
+    print(f"  SDL_RENDER_DRIVER={env.get('SDL_RENDER_DRIVER', 'not set')}")
+    result = subprocess.run([binary], env=env)
     print(f"chocolate-doom exited with code {result.returncode}")
     if not AUTO_SELECT_MODE:
         input("Press Enter to return to menu...")
