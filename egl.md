@@ -715,7 +715,31 @@ The remaining chocolate-doom issue is specific to its EGL initialization approac
 
 ---
 
-## May 28, 2026 - Build Complete and Ready
+## May 29, 2026 - ROOT CAUSE IDENTIFIED ✅
+
+### Key Finding: Wayland Socket Access Issue
+
+**Environment:**
+- Weston compositor runs as user `weston` 
+- Wayland socket: `/run/user/1000/wayland-1` (permissions: `srwxr-xr-x`)
+- Runtime directory: `/run/user/1000/` (permissions: `drwx------`, owned by weston)
+
+**The Problem:**
+While the Wayland socket itself is world-readable, the SDL2 tests are running as **root**, which cannot properly access the Wayland compositor running in the `weston` user session.
+
+**Test Results:**
+- ✅ **EGL test (option 3)** works - uses direct EGL calls with proper socket access
+- ❌ **SDL2 renderer test** fails - "EGL not initialized" 
+- ❌ **Chocolate Doom** fails - "Could not initialize OpenGL / GLES library"
+
+**Solution Required:**
+The SDL2 applications need to either:
+1. Run within the weston user session (set `XDG_RUNTIME_DIR=/run/user/1000`)
+2. Or use the system-wide Wayland socket if available
+
+### Testing Approach
+
+Need to test SDL2 with proper environment as weston user or ensure the socket is accessible to root.
 
 ### Changes Made
 

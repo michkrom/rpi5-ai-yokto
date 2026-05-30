@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     
     // Create window with OpenGL-compatible flags
     // SDL_WINDOW_OPENGL is NEEDED for EGL initialization on Wayland
-    printf("Creating window with SDL_CreateWindow...\n");
+    printf("Creating window with SDL_WINDOW_OPENGL flag...\n");
     window = SDL_CreateWindow("SDL2 Renderer Test",
                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               640, 480,
