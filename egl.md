@@ -717,29 +717,27 @@ The remaining chocolate-doom issue is specific to its EGL initialization approac
 
 ## May 29, 2026 - ROOT CAUSE IDENTIFIED ✅
 
-### Key Finding: Wayland Socket Access Issue
+### Key Finding: SDL_WINDOW_OPENGL Flag Required + Environment Variables
 
 **Environment:**
 - Weston compositor runs as user `weston` 
 - Wayland socket: `/run/user/1000/wayland-1` (permissions: `srwxr-xr-x`)
 - Runtime directory: `/run/user/1000/` (permissions: `drwx------`, owned by weston)
 
-**The Problem:**
-While the Wayland socket itself is world-readable, the SDL2 tests are running as **root**, which cannot properly access the Wayland compositor running in the `weston` user session.
+**Critical Fix:**
+The SDL2 renderer test **WORKS** when using `SDL_WINDOW_OPENGL` flag and proper environment:
+- ✅ SDL2 renderer test passes with graphics displayed
+- ❌ Chocolate Doom still fails despite patch
 
-**Test Results:**
-- ✅ **EGL test (option 3)** works - uses direct EGL calls with proper socket access
-- ❌ **SDL2 renderer test** fails - "EGL not initialized" 
-- ❌ **Chocolate Doom** fails - "Could not initialize OpenGL / GLES library"
+**Root Cause:**
+1. `SDL_WINDOW_OPENGL` flag is REQUIRED for SDL2 to initialize EGL on Wayland
+2. The chocolate-doom patch must set SDL_GL_SetAttribute() BEFORE SDL_Init()
+3. Environment variables (XDG_RUNTIME_DIR, WAYLAND_DISPLAY) must be set correctly
 
-**Solution Required:**
-The SDL2 applications need to either:
-1. Run within the weston user session (set `XDG_RUNTIME_DIR=/run/user/1000`)
-2. Or use the system-wide Wayland socket if available
-
-### Testing Approach
-
-Need to test SDL2 with proper environment as weston user or ensure the socket is accessible to root.
+**Solution Implemented:**
+- Updated patch to add `SDL_WINDOW_OPENGL` flag
+- Moved SDL_GL_SetAttribute calls to execute before SetSDLVideoDriver()
+- Updated wrapper script to set XDG_RUNTIME_DIR and WAYLAND_DISPLAY
 
 ### Changes Made
 

@@ -12,22 +12,21 @@ int main(int argc, char *argv[]) {
     
     printf("=== SDL2 Renderer Test ===\n");
     
-    // Initialize SDL with video
+    // Initialize SDL with video first
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         printf("SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
     printf("SDL_Init succeeded\n");
     
-    // Set OpenGL ES 2.0 context attributes BEFORE creating window
-    // This is needed for SDL_CreateRenderer to work with OpenGL ES
+    // Set OpenGL ES 2.0 context attributes AFTER SDL_Init
+    // This allows SDL to load EGL libraries internally
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     
-    // Set hints like chocolate-doom does
+    // Set hints for Wayland
     SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland");
-    SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
     
     // Create window with OpenGL-compatible flags
     // SDL_WINDOW_OPENGL is NEEDED for EGL initialization on Wayland
@@ -44,7 +43,7 @@ int main(int argc, char *argv[]) {
     }
     printf("Window created successfully\n");
     
-    // Create renderer (no explicit GL context needed!)
+    // Create renderer
     printf("Creating renderer with SDL_CreateRenderer...\n");
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     
@@ -61,26 +60,19 @@ int main(int argc, char *argv[]) {
     }
     printf("Renderer created successfully\n");
     
-    // Test rendering - draw a simple pattern
+    // Test rendering
     printf("Testing rendering...\n");
-    
-    // Set draw color to blue (like doom's status bar)
     SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
     SDL_RenderClear(renderer);
-    
-    // Draw a green rectangle (like health/ammo numbers)
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
     SDL_Rect rect = {100, 100, 200, 100};
     SDL_RenderFillRect(renderer, &rect);
-    
-    // Present to screen
     SDL_RenderPresent(renderer);
     
     printf("=== RENDERER TEST PASSED ===\n");
     printf("Window will stay visible for 5 seconds...\n");
     SDL_Delay(5000);
     
-    // Cleanup
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
