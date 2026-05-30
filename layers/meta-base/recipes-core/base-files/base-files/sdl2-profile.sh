@@ -16,3 +16,7 @@ fi
 if [ -z "$XDG_RUNTIME_DIR" ]; then
     export XDG_RUNTIME_DIR=/run/user/$(id -u 2>/dev/null || echo 0)
 fi
+
+# Force SDL2 to load the correct GLES library path
+# This is critical for Yocto-based systems where libGLESv2.so.2 is in /usr/lib/
+export SDL_VIDEO_GL_DRIVER=/usr/lib/libGLESv2.so.2

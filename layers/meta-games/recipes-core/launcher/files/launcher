@@ -279,14 +279,33 @@ def launch_doom(auto_download=True):
             print("No Doom WAD files found in /usr/share/doom/")
             return False
     
-    env = get_wayland_env()
-    # Note: Don't force SDL_VIDEO_GL_DRIVER - let SDL2 find the library dynamically
-    # The wrapper script already sets the necessary SDL hints
+    # Use the wrapper script which has the correct Wayland environment
+    if binary == "/usr/bin/chocolate-doom-wrapper":
+        print("Launching chocolate-doom via wrapper...")
+        print(f"  Binary: {binary}")
+        result = subprocess.run([binary], env=os.environ.copy())
+        print(f"chocolate-doom exited with code {result.returncode}")
+        if not AUTO_SELECT_MODE:
+            input("Press Enter to return to menu...")
+        return True
+    
+    # For direct binary, set full environment including Wayland socket path
+    env = os.environ.copy()
+    env["SDL_VIDEODRIVER"] = "wayland"
+    env["SDL_RENDER_DRIVER"] = "opengles2"
+    env["SDL_VIDEO_GL_DRIVER"] = "/usr/lib/libGLESv2.so.2"
+    
+    # Find and set correct Wayland socket for weston user session
+    for user_path in Path("/run/user").iterdir():
+        if user_path.name == "1000" and (user_path / "wayland-1").exists():
+            env["XDG_RUNTIME_DIR"] = str(user_path)
+            env["WAYLAND_DISPLAY"] = "wayland-1"
+            break
     
     print("Launching chocolate-doom...")
     print(f"  Binary: {binary}")
     print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")
-    print(f"  SDL_RENDER_DRIVER={env.get('SDL_RENDER_DRIVER', 'not set')}")
+    print(f"  SDL_VIDEO_GL_DRIVER={env.get('SDL_VIDEO_GL_DRIVER', 'not set')}")
     print(f"  WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY', 'not set')}")
     result = subprocess.run([binary], env=env)
     print(f"chocolate-doom exited with code {result.returncode}")
