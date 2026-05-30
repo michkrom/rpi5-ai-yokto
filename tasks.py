@@ -869,7 +869,7 @@ def swu_generate(ctx, base=False, wayland=False, weston=False, chrome=False, gam
     basename = level_to_image.get(level, "core-image")
     
     # Find the image for this specific level
-    cmd = f'cd {WORK_MOUNT} && ls -t build/tmp/deploy/images/raspberrypi5/{basename}-*.wic.bz2 2>/dev/null | head -1'
+    cmd = f'cd {WORK_MOUNT} && ls -t build/tmp/deploy/images/raspberrypi5/{basename}-*.wic.bz2 2>/dev/null | head -n 1'
     
     result = _run_in_container(ctx, cmd, hide=True)
     wic_path = result.stdout.strip()
