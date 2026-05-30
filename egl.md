@@ -804,3 +804,19 @@ SDL2 cannot find/initialize the OpenGL ES library. This may require:
 1. Ensuring libEGL and libGLES are in the library search path
 2. Setting `EGL_PLATFORM=surfaceless` or similar
 3. Using the new image which has the properly configured libraries
+
+### SOLUTION FOUND ✅ (May 30)
+
+**Key Fix:** Set `SDL_VIDEO_GL_DRIVER=/usr/lib/libGLESv2.so.2` environment variable!
+
+This forces SDL2's dynamic loader to use the correct OpenGL ES library path on Yocto-based systems.
+
+**Result:** Chocolate Doom now launches and runs successfully on target 192.168.68.61!
+
+### Required Environment Variables
+```bash
+export XDG_RUNTIME_DIR=/run/user/1000      # Points to weston user session
+export WAYLAND_DISPLAY=wayland-1           # Correct Wayland socket
+export SDL_VIDEODRIVER=wayland             # Force Wayland backend
+export SDL_VIDEO_GL_DRIVER=/usr/lib/libGLESv2.so.2  # Force GLES library loading
+```

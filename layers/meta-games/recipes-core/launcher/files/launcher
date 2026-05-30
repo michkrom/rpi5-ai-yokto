@@ -280,9 +280,8 @@ def launch_doom(auto_download=True):
             return False
     
     env = get_wayland_env()
-    # Force SDL to load GLES library correctly
-    env["SDL_VIDEO_GL_DRIVER"] = "/usr/lib/libGLESv2.so.2"
-    env["SDL_HINT_RENDER_DRIVER"] = "opengles2"
+    # Note: Don't force SDL_VIDEO_GL_DRIVER - let SDL2 find the library dynamically
+    # The wrapper script already sets the necessary SDL hints
     
     print("Launching chocolate-doom...")
     print(f"  Binary: {binary}")
@@ -309,10 +308,17 @@ def test_egl():
     
     # Fallback to Python-based checks
     print("\nEGL library check:")
-    egl_libs = ["libEGL.so.1", "libGL.so.1", "libGLESv2.so.2", "libdrm.so.2"]
+    egl_libs = ["libEGL.so.1", "libGLESv2.so.2", "libdrm.so.2"]
     for lib in egl_libs:
-        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
-        found = any(lib in line for line in result.stdout.split('\n'))
+        # Try to find library using find instead of ldconfig -p (BusyBox compatibility)
+        lib_path = Path("/usr/lib") / lib
+        found = lib_path.exists()
+        if not found:
+            # Try alternative locations
+            for alt_path in ["/usr/lib/aarch64-poky-linux", "/usr/lib64"]:
+                if (Path(alt_path) / lib).exists():
+                    found = True
+                    break
         status = "✓ found" if found else "✗ not found"
         print(f"  {lib}: {status}")
     
@@ -390,13 +396,18 @@ def show_diagnostics():
     print("=" * 60)
     
     print("\nLibrary check:")
-    try:
-        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
-        for line in result.stdout.split('\n'):
-            if 'libSDL2' in line or 'libpng' in line:
-                print(f"  {line.strip()}")
-    except:
-        print("  ldconfig not available")
+    # Check for key libraries using Path.exists (BusyBox compatibility)
+    for lib in ["libSDL2-2.0.so.0", "libpng16.so.16"]:
+        lib_path = Path("/usr/lib") / lib
+        found = lib_path.exists()
+        if not found:
+            # Try alternative locations
+            for alt_path in ["/usr/lib/aarch64-poky-linux", "/usr/lib64"]:
+                if (Path(alt_path) / lib).exists():
+                    found = True
+                    break
+        status = "✓ found" if found else "✗ not found"
+        print(f"  {lib}: {status}")
     
     print("\nGame binaries:")
     for binary in ["/usr/bin/quake3e", "/usr/bin/chocolate-doom"]:
