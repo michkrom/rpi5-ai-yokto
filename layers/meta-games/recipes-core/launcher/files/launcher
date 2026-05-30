@@ -280,6 +280,10 @@ def launch_doom(auto_download=True):
             return False
     
     env = get_wayland_env()
+    # Force SDL to load GLES library correctly
+    env["SDL_VIDEO_GL_DRIVER"] = "/usr/lib/libGLESv2.so.2"
+    env["SDL_HINT_RENDER_DRIVER"] = "opengles2"
+    
     print("Launching chocolate-doom...")
     print(f"  Binary: {binary}")
     print(f"  SDL_VIDEODRIVER={env.get('SDL_VIDEODRIVER', 'not set')}")

@@ -8,16 +8,18 @@
  
      // Set the highdpi flag - this makes a big difference on Macs with
      // retina displays, especially when using small window sizes.
-@@ -1437,6 +1438,12 @@ int I_InitGraphics(void)
-     putenv(winenv);
-     }
-
-+    // Set hints for Wayland/EGL compatibility BEFORE SDL_Init
+@@ -1447,6 +1448,12 @@ int I_InitGraphics(void)
+     if (SDL_Init(SDL_INIT_VIDEO) < 0) 
+     {
+         I_Error("Failed to initialize video: %s", SDL_GetError());
++    }
++    
++    // Set hints for Wayland/EGL compatibility AFTER SDL_Init (like working test)
 +    SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
 +    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
 +    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 +    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-+
-     SetSDLVideoDriver();
- 
-     if (SDL_Init(SDL_INIT_VIDEO) < 0)
+     }
+
+     // When in screensaver mode, run full screen and auto detect
+     // screen dimensions (don't change video mode)
