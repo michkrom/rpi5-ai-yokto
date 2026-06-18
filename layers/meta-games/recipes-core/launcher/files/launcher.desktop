@@ -1,7 +1,10 @@
 [Desktop Entry]
+Encoding=UTF-8
 Type=Application
 Name=Yokto Launcher
-Comment=Select and launch games
-Exec=weston-terminal -f -- /usr/bin/launcher
+Comment=Game selection UI
+Exec=/usr/bin/launcher-direct.sh
 Icon=applications-games
+Terminal=false
 Categories=Game;
+StartupNotify=false

@@ -468,15 +468,16 @@ def show_diagnostics():
 
 def main_menu(auto_select=None):
     """Main menu using dialog/whiptail"""
-    # Show network info prominently at startup
-    net = show_net_info()
-    
-    while True:
-        print(f"\n{TITLE}")
-        print(f"  Host: {net['hostname']}  IP: {net['ip']}  {'🌐' if net['connected'] else '❌'}")
-        print()
+    try:
+        # Show network info prominently at startup
+        net = show_net_info()
         
-        menu = """1) Launch Quake III Arena (q3e)
+        while True:
+            print(f"\n{TITLE}")
+            print(f"  Host: {net['hostname']}  IP: {net['ip']}  {'🌐' if net['connected'] else '❌'}")
+            print()
+            
+            menu = """1) Launch Quake III Arena (q3e)
 2) Launch Doom (chocolate-doom)
 3) Test EGL (egl-test)
 4) Test SDL2 Window (sdl2-window-test)
@@ -485,56 +486,72 @@ def main_menu(auto_select=None):
 7) System Diagnostics
 0) Exit
 """
-        print(menu)
-        
-        if auto_select is not None:
-            choice = auto_select
-            print(f"Auto-selecting: {choice}")
-        else:
-            try:
-                choice = input("Select option: ").strip()
-            except EOFError:
-                break
-        
-        if choice == "1":
-            launch_q3e()
+            print(menu)
+            
             if auto_select is not None:
+                choice = auto_select
+                print(f"Auto-selecting: {choice}")
+            else:
+                try:
+                    choice = input("Select option: ").strip()
+                except EOFError:
+                    break
+            
+            if choice == "1":
+                launch_q3e()
+                if auto_select is not None:
+                    break
+            elif choice == "2":
+                launch_doom()
+                if auto_select is not None:
+                    break
+            elif choice == "3":
+                test_egl()
+                if auto_select is not None:
+                    break
+            elif choice == "4":
+                test_sdl2_window()
+                if auto_select is not None:
+                    break
+            elif choice == "5":
+                test_sdl2_egl()
+                if auto_select is not None:
+                    break
+            elif choice == "6":
+                test_sdl2_renderer()
+                if auto_select is not None:
+                    break
+            elif choice == "7":
+                show_diagnostics()
+                if auto_select is not None:
+                    break
+            elif choice == "0":
+                print("Goodbye!")
                 break
-        elif choice == "2":
-            launch_doom()
-            if auto_select is not None:
-                break
-        elif choice == "3":
-            test_egl()
-            if auto_select is not None:
-                break
-        elif choice == "4":
-            test_sdl2_window()
-            if auto_select is not None:
-                break
-        elif choice == "5":
-            test_sdl2_egl()
-            if auto_select is not None:
-                break
-        elif choice == "6":
-            test_sdl2_renderer()
-            if auto_select is not None:
-                break
-        elif choice == "7":
-            show_diagnostics()
-            if auto_select is not None:
-                break
-        elif choice == "0":
-            print("Goodbye!")
-            break
-        else:
-            print("Invalid option")
-            if auto_select is not None:
-                break
+            else:
+                print("Invalid option")
+                if auto_select is not None:
+                    break
+    except Exception as e:
+        # Log errors instead of crashing silently
+        import traceback
+        with open("/tmp/launcher.log", "a") as f:
+            f.write(f"FATAL ERROR in main_menu: {e}\n{traceback.format_exc()}\n")
+        print(f"Error: {e}")
+        print("Check /tmp/launcher.log for details")
 
 if __name__ == "__main__":
     try:
         main_menu(sys.argv[1] if len(sys.argv) > 1 else None)
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        error_msg = f"FATAL ERROR: {e}\n{traceback.format_exc()}"
+        try:
+            Path("/tmp/launcher.log").write_text(
+                Path("/tmp/launcher.log").read_text(encoding="utf-8") + "\n" + error_msg,
+                encoding="utf-8"
+            )
+        except:
+            pass
+        print(error_msg)
     sys.exit(0)

@@ -1,0 +1,16 @@
+#!/bin/bash
+# Launcher shell script - executed by weston-terminal --shell=launcher-run
+# This is the actual launcher that stays running in the terminal
+
+# Log that we're starting
+exec >> /tmp/launcher.log 2>&1
+echo "launcher-run: starting at $(date)"
+echo "launcher-run: WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-not set}"
+echo "launcher-run: XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-not set}"
+echo "launcher-run: args=$@"
+
+# Set up environment for the launcher
+cd /home/weston
+
+# Run the Python launcher
+exec /usr/bin/python3 /usr/bin/launcher "$@"
