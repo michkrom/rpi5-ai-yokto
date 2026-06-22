@@ -30,26 +30,24 @@ invoke docker-init
 ### 2. Checkout Sources (Background Recommended)
 ```bash
 # Checkout Yocto layers for your target level (use --detach for background)
-invoke build-checkout --chrome --detach    # For Chrome level
-# or
-invoke build-checkout --wayland --detach   # For Wayland level
-# or
-invoke build-checkout --base --detach      # For minimal base level
+invoke build-checkout --ai --detach      # For AI level
+invoke build-checkout --chrome --detach   # For Chrome level
+invoke build-checkout --wayland --detach  # For Wayland level
+invoke build-checkout --base --detach     # For minimal base level
 ```
 
 ### 3. Build Image (Detached Mode Recommended)
 ```bash
 # Start detached build (recommended to avoid token waste)
-invoke build-start --chrome --detach       # For Chrome level
-# or
-invoke build-start --wayland --detach      # For Wayland level
-# or
-invoke build-start --base --detach         # For base level
+invoke build-start --ai --detach         # For AI level
+invoke build-start --chrome --detach     # For Chrome level
+invoke build-start --wayland --detach    # For Wayland level
+invoke build-start --base --detach       # For base level
 
 # Monitor build progress
 invoke build-status                        # Check if running + tail logs
 invoke build-last                          # Show recent build output
-tail -f build-chrome.log                   # View specific log file
+tail -f build-ai.log                       # View specific log file
 ```
 
 ### 4. Flash to SD Card
@@ -81,6 +79,7 @@ Available tools include:
 2. **wayland** - base + Weston compositor
 3. **games** - wayland + Quake3e + Chocolate Doom
 4. **chrome** - games + Chromium browser (includes all gaming functionality)
+5. **ai** - wayland + llama-cpp + whisper-cpp + llama-server service
 
 > **Note:** Chrome extends games, so the chrome image includes all games plus the browser.
 
@@ -93,6 +92,20 @@ rpi5-ai-yokto/
 ├── dockerfile         # Build environment
 └── tasks.py           # Invoke commands
 ```
+
+### AI Level Architecture
+
+The `--ai` level builds `core-image-weston` with these AI packages:
+
+| Package | Provides | Runtime Dependencies |
+|---------|----------|-------------------|
+| llama-cpp | llama-cli, llama-server, libggml*, libllama*, libmtmd* | bash |
+| whisper-cpp | whisper-cli, whisper-stream, libwhisper* | llama-cpp |
+| llama-server | systemd service unit | llama-cpp |
+
+**Note:** Both `llama.cpp` and `whisper.cpp` bundle the `ggml` library. To avoid conflicts:
+- `llama-cpp` installs all `libggml*` shared libraries
+- `whisper-cpp` only installs `libwhisper*` (not `libggml*`) and depends on `llama-cpp` for shared ggml
 
 ## Key Tips for Agents
 - Inspect invoke tooling and MCP wrappers before using explicit docker commands
@@ -121,6 +134,7 @@ These layers in `layers/` are OUR custom code (not downloaded by kas):
 - `layers/meta-games/` - Game recipes (Quake3e, launcher)
 - `layers/meta-doom/` - Chocolate Doom recipe
 - `layers/meta-base/` - Base yokto recipes (SWU, graphics fixes)
+- `layers/meta-ai/` - AI tools recipes (llama-cpp, whisper-cpp, llama-server)
 
 All other `layers/*` entries are cloned by kas and gitignored.
 

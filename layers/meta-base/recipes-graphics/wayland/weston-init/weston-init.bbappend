@@ -6,7 +6,7 @@
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
-do_install:append:raspberrypi5() {
+do_install:append:rpi() {
     # Fix systemd service for headless operation
     if [ -e "${D}${systemd_system_unitdir}/weston.service" ]; then
         # Remove tty0 condition that can fail on Pi5

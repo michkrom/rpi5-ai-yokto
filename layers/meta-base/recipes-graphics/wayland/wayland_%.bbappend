@@ -8,10 +8,10 @@
 
 # Prevent the meta-raspberrypi bbappend from removing libwayland-egl
 # The do_install from the original recipe runs first, then our append runs
-do_install:append:raspberrypi5() {
+do_install:append:rpi() {
     : # No-op - libwayland-egl should already be installed
 }
 
 # Ensure wayland-client has proper dependency on wayland-egl
 # This is critical for SDL2's Wayland video driver to find wl_egl_window_* symbols
-WAYLAND_CLIENT_EXTRA_LIBS:raspberrypi5 = "-lwayland-egl"
+WAYLAND_CLIENT_EXTRA_LIBS:rpi = "-lwayland-egl"

@@ -8,15 +8,17 @@ IMAGE = "yokto"
 CONTAINER_NAME = "yocto-bg"
 CONTAINER_USER = "yocto"
 WORK_MOUNT = "/work"
-LEVELS = ("base", "wayland", "games", "chrome")
+LEVELS = ("base", "wayland", "games", "chrome", "ai")
 LOCK_FILE = ROOT / ".build-lock"
 
 
-def _level(base=False, wayland=False, weston=False, chrome=False, games=False):
+def _level(base=False, wayland=False, weston=False, chrome=False, games=False, ai=False):
     """Return the level string based on which level is requested.
     
-    One-of enumeration: base -> wayland -> games -> chrome
+    One-of enumeration: base -> wayland -> games -> chrome -> ai
     """
+    if ai:
+        return "ai"
     if chrome:
         return "chrome"
     if games:
@@ -37,7 +39,7 @@ def _validate(level):
 def _kas_args(level):
     """Return appropriate config chain for level.
     
-    Chain: base -> wayland -> games -> chrome
+    Chain: base -> wayland -> games -> chrome -> ai
     """
     if level == "base":
         return "kas/base.yml"
@@ -45,8 +47,10 @@ def _kas_args(level):
         return "kas/base.yml:kas/wayland.yml"
     elif level == "games":
         return "kas/base.yml:kas/wayland.yml:kas/games.yml"
-    else:  # chrome
+    elif level == "chrome":
         return "kas/base.yml:kas/wayland.yml:kas/games.yml:kas/chrome.yml"
+    else:  # ai
+        return "kas/base.yml:kas/wayland.yml:kas/ai.yml"
 
 
 # ── Lock file ─────────────────────────────────────────────────────────────

@@ -97,15 +97,16 @@ def docker_init(ctx, no_cache=False):
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "update": "Force update of layer repos",
         "force": "Overwrite existing config files",
         "detach": "Run in background (for MCP)",
     }
 )
-def build_checkout(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, update=False, force=False, detach=False):
+def build_checkout(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, update=False, force=False, detach=False):
     """Fetch layers and write config (no build)."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -152,14 +153,15 @@ def build_checkout(ctx, base=False, wayland=False, weston=False, chrome=False, g
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "log": "Save build output to a file (e.g. build-chrome.log)",
         "detach": "Run in background (for MCP)",
     }
 )
-def build_start(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, log=None, detach=False):
+def build_start(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, log=None, detach=False):
     """Checkout layers and build the image."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -465,13 +467,14 @@ def build_stop(ctx, force=False, lines=10):
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "command": "Command to run in the kas shell (if omitted, enters interactive shell)",
     }
 )
-def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, command=""):
+def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, command=""):
     """Open a shell with kas environment configured (sources checked out)."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
     if command:
         _run_in_container(
             ctx,
@@ -495,17 +498,18 @@ def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=Fals
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "command": "Command to run in the kas shell (if omitted, enters interactive shell)",
     }
 )
-def build_shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, command=""):
+def build_shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, command=""):
     """Enter kas shell with environment configured.
     
     Without --command: enters interactive shell.
     With --command: runs the command in kas environment.
     """
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
     if command:
         _run_in_container(
             ctx,
@@ -654,6 +658,7 @@ def _find_wic(level):
         "wayland": "image-wayland",
         "chrome": "image-chrome",
         "games": "image-games",
+        "ai": "image-ai",
     }
     
     basename = level_to_basename.get(level, "core-image-weston")
@@ -700,14 +705,15 @@ def _check_removable(device):
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "force": "Skip removable drive check",
         "nobmap": "Skip bmap usage, use dd instead",
         "dd": "Use dd instead of bmaptool",
     }
 )
-def flash(ctx, device=None, base=False, wayland=False, weston=False, chrome=False, games=False, force=False, nobmap=False, dd=False):
+def flash(ctx, device=None, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, force=False, nobmap=False, dd=False):
     """Flash the built image to an SD card. Runs on host for USB access."""
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
 
     if not device or not device.startswith("/dev/"):
         raise Exit(f"Device must be an absolute path like /dev/sdX, got: {device}")
@@ -847,13 +853,14 @@ def docker_purge(ctx):
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "detach": "Run in background",
     }
 )
-def swu_generate(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, detach=False):
+def swu_generate(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, detach=False):
     """Generate a .swu update file from a built image."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
     _assert_no_running_build(ctx)
 
     _ensure_container(ctx)
@@ -864,6 +871,7 @@ def swu_generate(ctx, base=False, wayland=False, weston=False, chrome=False, gam
         "wayland": "image-wayland",
         "chrome": "image-chrome",
         "games": "image-games",
+        "ai": "image-ai",
     }
     
     basename = level_to_image.get(level, "core-image")
@@ -940,16 +948,17 @@ echo "SWU created: {swu_name}"
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "device": "Target block device (e.g. /dev/sdb)",
         "force": "Skip removable drive check",
     }
 )
-def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, device=None, force=False):
+def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, device=None, force=False):
     """Flash a .swu update file to an SD card.
     
     Finds the most recent .swu file for the specified level and flashes it.
     """
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
     
     # Map levels to image names for new SWU naming
     level_to_image = {
@@ -957,6 +966,7 @@ def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=
         "wayland": "image-wayland",
         "chrome": "image-chrome",
         "games": "image-games",
+        "ai": "image-ai",
     }
     
     image_name = level_to_image.get(level, "image-wayland")
@@ -1018,18 +1028,19 @@ def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=
         "weston": "Alias for --wayland",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "host": "Target device IP or hostname",
         "user": "SSH user (default: root)",
         "swu": "Explicit path to .swu file (overrides level-based search)",
     }
 )
-def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, host=None, user="root", swu=None):
+def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, host=None, user="root", swu=None):
     """Apply a .swu update to a running target device via SSH.
     
     Uses level flags to find the appropriate .swu file, or accepts explicit --swu path.
     Attempts /tmp first, falls back to /root if insufficient space.
     """
-    level = _validate(_level(base, wayland, weston, chrome, games))
+    level = _validate(_level(base, wayland, weston, chrome, games, ai))
     
     # Find the .swu file
     if swu:
@@ -1043,6 +1054,7 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
             "wayland": "image-wayland",
             "chrome": "image-chrome",
             "games": "image-games",
+        "ai": "image-ai",
         }
         
         image_name = level_to_image.get(level, "image-wayland")

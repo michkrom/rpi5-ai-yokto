@@ -1,0 +1,26 @@
+# AI configuration - extends wayland.yml
+# Use: kas build kas/base.yml:wayland.yml:ai.yml
+
+header:
+  version: 18
+
+target:
+  - core-image-weston
+  - yokto-ai-swu
+
+repos:
+  meta-ai:
+    path: layers/meta-ai
+
+local_conf_header:
+  02_ai: |
+    CORE_IMAGE_EXTRA_INSTALL += "llama-cpp whisper-cpp llama-server"
+    IMAGE_NAME = "image-ai"
+  03_rootfs-size: |
+    IMAGE_ROOTFS_EXTRA_SPACE = "4194304"
+  z_skip-qa: |
+    INSANE_SKIP:cairo += "file-rdeps"
+    INSANE_SKIP:glib-2.0 += "file-rdeps"
+    INSANE_SKIP:weston += "file-rdeps"
+    INSANE_SKIP:weston-examples += "file-rdeps"
+    INSANE_SKIP:libweston-13 += "file-rdeps"

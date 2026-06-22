@@ -1,0 +1,18 @@
+[Unit]
+Description=LLaMA Server - Local AI inference server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/llama-server --model /usr/share/models/llama-model.gguf --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/usr/share/models
+
+[Install]
+WantedBy=multi-user.target

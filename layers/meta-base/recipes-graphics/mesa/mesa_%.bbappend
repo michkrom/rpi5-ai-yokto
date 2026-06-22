@@ -7,6 +7,4 @@
 # in case oe-core changes this default, we set dri3 explicitly.
 
 PACKAGECONFIG:append:rpi = " gallium vc4 v3d kmsro ${@bb.utils.contains('DISTRO_FEATURES', 'x11 opengl', 'x11 dri3', '', d)} ${@bb.utils.contains('DISTRO_FEATURES', 'vulkan', 'vulkan broadcom', '', d)}"
-PACKAGECONFIG:append:raspberrypi5 = " gallium vc4 v3d kmsro ${@bb.utils.contains('DISTRO_FEATURES', 'x11 opengl', 'x11 dri3', '', d)} ${@bb.utils.contains('DISTRO_FEATURES', 'vulkan', 'vulkan broadcom', '', d)}"
 DRIDRIVERS:class-target:rpi = ""
-DRIDRIVERS:class-target:raspberrypi5 = ""

@@ -13,12 +13,13 @@ This project includes AI agent tools built with [PI](https://github.com/badlogic
 
 | Level | Description |
 |-------|-------------|
-| **core** | Minimal headless image |
-| **wayland** | core + Wayland desktop + Weston compositor |
+| **base** | Minimal headless image |
+| **wayland** | base + Wayland desktop + Weston compositor |
 | **games**  | wayland + Quake3e + Chocolate Doom (gaming engines) |
 | **chrome** | games + Chromium browser |
+| **ai** | wayland + llama-cpp + whisper-cpp + llama-server (AI inference tools) |
 
-Each level builds upon the previous one in the chain: **core → wayland → games → chrome**. The core level provides a minimal system, wayland adds a graphical desktop environment, games adds gaming engines, and chrome adds a web browser (with all previous functionality including games).
+Each level builds upon the previous one in the chain: **base → wayland → games → chrome → ai**. The base level provides a minimal system, wayland adds a graphical desktop environment, games adds gaming engines, chrome adds a web browser, and ai adds AI inference tools with a systemd service.
 
 > **Warning:** The Chrome level build can take several hours to days. It requires building Chromium from source, which needs Rust, Clang, and the full Chromium codebase - a process requiring significant time and disk space (~100GB+). Games level is significantly faster as it only builds smaller game engines.
 
@@ -34,15 +35,17 @@ invoke docker-init
 invoke docker-init --no-cache   # Force rebuild
 
 # Checkout Yocto layers (no build)
+invoke build-checkout --ai --detach        # For AI level (background)
 invoke build-checkout --chrome --detach    # For Chrome level (background)
 invoke build-checkout --wayland            # Wayland level (foreground)
-invoke build-checkout --core --update      # Force update layers
-invoke build-checkout --force            # Overwrite existing config
+invoke build-checkout --base --update      # Force update layers
+invoke build-checkout --force              # Overwrite existing config
 
 # Build image (detached mode recommended)
+invoke build-start --ai --detach           # AI level (background)
 invoke build-start --chrome --detach       # Chrome level (background)
 invoke build-start --wayland               # Wayland level (foreground)
-invoke build-start --core --detach         # Core level (background)
+invoke build-start --base --detach         # Base level (background)
 invoke build-start --games --detach        # Games level (background)
 
 # Monitor detached builds
@@ -56,6 +59,7 @@ invoke shell --wayland                     # Wayland level environment
 invoke shell --chrome --command "bitbake -c listtasks core-image-weston"
 
 # Flash to SD card
+invoke flash --device /dev/sdb --ai      # Flash AI image
 invoke flash --device /dev/sdb --chrome    # Flash chrome image
 invoke flash --device /dev/sdb --wayland   # Flash wayland image
 invoke flash --device /dev/sdb --games     # Flash games image
@@ -168,6 +172,10 @@ The `meta-doom` layer contains:
 ### Chrome level adds
 - `IMAGE_INSTALL:append = " chromium-ozone-wayland"` — Chromium browser (includes all games)
 
+### AI level adds
+- `CORE_IMAGE_EXTRA_INSTALL += "llama-cpp whisper-cpp llama-server"` — AI inference tools (llama.cpp, whisper.cpp)
+- Provides `image-ai` target with LLaMA server systemd service for local AI inference
+
 ## meta-games and meta-doom Layers (Custom)
 
 The `layers/meta-games/` layer contains:
@@ -192,14 +200,33 @@ The `layers/meta-doom/` layer contains:
 - Build deps: `libsdl2`, `sdl-mixer`, `libpng`, `zlib`
 - Ready for Freedoom WAD files (downloadable via launcher)
 
+The `layers/meta-ai/` layer contains:
+
+**LLaMA.cpp** (`recipes-ai/llama-cpp/llama-cpp_git.bb`):
+- LLaMA inference library in C/C++
+- Provides `llama-cli` and `llama-server` binaries
+- Builds shared libraries: `libggml*`, `libllama*`, `libmtmd*`
+
+**Whisper.cpp** (`recipes-ai/whisper-cpp/whisper-cpp_git.bb`):
+- Speech recognition library in C/C++
+- Provides `whisper-cli` and `whisper-stream` binaries
+- Builds `libwhisper*` shared library (depends on llama-cpp for libggml)
+
+**LLaMA Server** (`recipes-core/llama-server/llama-server_1.0.bb`):
+- Systemd service for LLaMA inference server
+- Listens on port 8080 by default
+- Can serve models from `/usr/share/models/`
+
 ## Build Output
 
 ```
 build/deploy/images/raspberrypi5/
-├── core-image-base-raspberrypi5.rootfs.wic.bz2    # core level
+├── core-image-base-raspberrypi5.rootfs.wic.bz2    # base level
 ├── core-image-wayland-raspberrypi5.rootfs.wic.bz2  # wayland level
 ├── core-image-games-raspberrypi5.rootfs.wic.bz2    # games level
 ├── core-image-chrome-raspberrypi5.rootfs.wic.bz2   # chrome level (includes games)
+├── image-ai-raspberrypi5.rootfs.wic.bz2           # ai level
+├── image-ai.swu                                  # ai level OTA update
 ├── Image-*.bin                                    # Kernel
 ├── *.dtb / *.dtbo                                 # Device trees
 └── bootfiles/                                     # RPi firmware
@@ -225,7 +252,8 @@ After building an image, generate a `.swu` update file:
 
 ```bash
 # Generate .swu from the most recent built image
-invoke swu-generate --chrome
+invoke swu-generate --ai --detach         # Generate .swu for AI level
+invoke swu-generate --chrome --detach     # Generate .swu for chrome level
 
 # Check generated files
 invoke images  # Shows both .wic.bz2 and .swu files
@@ -251,7 +279,9 @@ invoke flash-swu --swu yokto-chrome-*.swu --device /dev/sdb
 ```bash
 # Copy and apply update to a running RPi5
 scp yokto-chrome-*.swu root@192.168.1.100:/tmp/
+scp yokto-ai-*.swu root@192.168.1.100:/tmp/
 ssh root@192.168.1.100 "swupdate-apply.sh /tmp/yokto-chrome-*.swu"
+ssh root@192.168.1.100 "swupdate-apply.sh /tmp/yokto-ai-*.swu"
 # Then reboot to activate
 ```
 

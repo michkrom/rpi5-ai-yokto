@@ -4,6 +4,7 @@ layers/*
 !layers/meta-doom/
 !layers/meta-games/
 !layers/meta-base/
+!layers/meta-ai/
 
 # kas build output (downloads, tmp, sstate, etc.)
 build/
