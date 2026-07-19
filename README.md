@@ -14,12 +14,12 @@ This project includes AI agent tools built with [PI](https://github.com/badlogic
 | Level | Description |
 |-------|-------------|
 | **base** | Minimal headless image |
-| **wayland** | base + Wayland desktop + Weston compositor |
-| **games**  | wayland + Quake3e + Chocolate Doom (gaming engines) |
-| **chrome** | games + Chromium browser |
-| **ai** | wayland + llama-cpp + whisper-cpp + llama-server (AI inference tools) |
+| **gui** | base + Wayland desktop + Weston compositor |
+| **games**  | gui + Quake3e + Chocolate Doom (gaming engines) |
+| **chrome** | gui + Chromium browser (independent from games) |
+| **ai** | gui + llama-cpp + whisper-cpp + llama-server (AI inference tools) |
 
-Each level builds upon the previous one in the chain: **base → wayland → games → chrome → ai**. The base level provides a minimal system, wayland adds a graphical desktop environment, games adds gaming engines, chrome adds a web browser, and ai adds AI inference tools with a systemd service.
+Each level builds upon the previous one in the chain: **base → gui → games**, and **base → gui → chrome → ai**. Chrome is now independent from games. To build Chrome + Games, combine both levels.
 
 > **Warning:** The Chrome level build can take several hours to days. It requires building Chromium from source, which needs Rust, Clang, and the full Chromium codebase - a process requiring significant time and disk space (~100GB+). Games level is significantly faster as it only builds smaller game engines.
 
@@ -37,14 +37,14 @@ invoke docker-init --no-cache   # Force rebuild
 # Checkout Yocto layers (no build)
 invoke build-checkout --ai --detach        # For AI level (background)
 invoke build-checkout --chrome --detach    # For Chrome level (background)
-invoke build-checkout --wayland            # Wayland level (foreground)
+invoke build-checkout --gui --detach       # GUI level
 invoke build-checkout --base --update      # Force update layers
 invoke build-checkout --force              # Overwrite existing config
 
 # Build image (detached mode recommended)
 invoke build-start --ai --detach           # AI level (background)
 invoke build-start --chrome --detach       # Chrome level (background)
-invoke build-start --wayland               # Wayland level (foreground)
+invoke build-start --gui --detach          # GUI level (background)
 invoke build-start --base --detach         # Base level (background)
 invoke build-start --games --detach        # Games level (background)
 
@@ -55,13 +55,13 @@ invoke build-stop                          # Stop running build
 
 # Interactive shell with kas environment
 invoke shell                               # Default (core level)
-invoke shell --wayland                     # Wayland level environment
-invoke shell --chrome --command "bitbake -c listtasks core-image-weston"
+invoke shell --gui                         # GUI level environment
+invoke shell --chrome --command "bitbake -c listtasks core-image-gui"
 
 # Flash to SD card
 invoke flash --device /dev/sdb --ai      # Flash AI image
 invoke flash --device /dev/sdb --chrome    # Flash chrome image
-invoke flash --device /dev/sdb --wayland   # Flash wayland image
+invoke flash --device /dev/sdb --gui       # Flash GUI image
 invoke flash --device /dev/sdb --games     # Flash games image
 invoke flash --device /dev/sdb --force     # Skip removable drive check
 
@@ -70,7 +70,7 @@ invoke images
 
 # Generate SWU update file from built image
 invoke swu-generate --chrome --detach     # Generate .swu for chrome level
-invoke swu-generate --wayland            # Generate .swu for wayland level
+invoke swu-generate --gui --detach       # Generate .swu for gui level
 
 # Flash SWU to SD card (finds latest .swu for specified level)
 invoke swu-flash --chrome --device /dev/sdb
@@ -103,7 +103,7 @@ invoke docker-purge
 
 When using `--detach`, build logs are saved to:
 - `build-core.log`
-- `build-wayland.log`
+- `build-gui.log`
 - `build-chrome.log`
 - `build-games.log`
 
@@ -116,9 +116,10 @@ yokto/
 ├── tasks.py                # Invoke tasks
 ├── kas/
 │   ├── core.yml            # Base config (RPi5 + scarthgap + shared)
-│   ├── wayland.yml         # → core-image-weston + Wayland
+│   ├── gui.yml             # → core-image-gui + Wayland
+│   ├── ai.yml              # → core-image-gui + AI components: llama-cpp whisper-cpp llama-server
 │   ├── games.yml           # → core-image-games + Quake3e + Doom
-│   └── chrome.yml          # → core-image-chrome + Chromium (includes games)
+│   └── chrome.yml          # → core-image-chrome + Chromium (independent from games)
 ├── layers/                   # Gitignored wholesale. Kas clones layers here.
 │   ├── poky/                   # OE-Core (cloned by kas)
 │   ├── meta-raspberrypi/       # RPi BSP (cloned by kas)
@@ -222,9 +223,9 @@ The `layers/meta-ai/` layer contains:
 ```
 build/deploy/images/raspberrypi5/
 ├── core-image-base-raspberrypi5.rootfs.wic.bz2    # base level
-├── core-image-wayland-raspberrypi5.rootfs.wic.bz2  # wayland level
+├── core-image-gui-raspberrypi5.rootfs.wic.bz2  # gui level
 ├── core-image-games-raspberrypi5.rootfs.wic.bz2    # games level
-├── core-image-chrome-raspberrypi5.rootfs.wic.bz2   # chrome level (includes games)
+├── core-image-chrome-raspberrypi5.rootfs.wic.bz2   # chrome level (independent from games)
 ├── image-ai-raspberrypi5.rootfs.wic.bz2           # ai level
 ├── image-ai.swu                                  # ai level OTA update
 ├── Image-*.bin                                    # Kernel
@@ -243,7 +244,7 @@ SWUpdate is included in all image levels. To add it manually:
 
 ```bash
 # SWUpdate is automatically included in builds via core.yml
-invoke build-start --wayland --detach
+invoke build-start --gui --detach
 ```
 
 ### Generating Update Files (.swu)

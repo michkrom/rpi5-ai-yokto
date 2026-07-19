@@ -32,7 +32,7 @@ invoke docker-init
 # Checkout Yocto layers for your target level (use --detach for background)
 invoke build-checkout --ai --detach      # For AI level
 invoke build-checkout --chrome --detach   # For Chrome level
-invoke build-checkout --wayland --detach  # For Wayland level
+invoke build-checkout --gui --detach      # For GUI level
 invoke build-checkout --base --detach     # For minimal base level
 ```
 
@@ -41,7 +41,7 @@ invoke build-checkout --base --detach     # For minimal base level
 # Start detached build (recommended to avoid token waste)
 invoke build-start --ai --detach         # For AI level
 invoke build-start --chrome --detach     # For Chrome level
-invoke build-start --wayland --detach    # For Wayland level
+invoke build-start --gui --detach         # For GUI level
 invoke build-start --base --detach       # For base level
 
 # Monitor build progress
@@ -76,12 +76,12 @@ Available tools include:
 
 ### Image Levels
 1. **base** - Minimal headless system
-2. **wayland** - base + Weston compositor
-3. **games** - wayland + Quake3e + Chocolate Doom
-4. **chrome** - games + Chromium browser (includes all gaming functionality)
-5. **ai** - wayland + llama-cpp + whisper-cpp + llama-server service
+2. **gui** - base + Weston compositor
+3. **games** - gui + Quake3e + Chocolate Doom
+4. **chrome** - gui + Chromium browser (independent from games)
+5. **ai** - gui + llama-cpp + whisper-cpp + llama-server service
 
-> **Note:** Chrome extends games, so the chrome image includes all games plus the browser.
+> **Note:** Chrome is now independent from games. To get Chrome + Games, build both levels together.
 
 ### Project Structure
 ```
