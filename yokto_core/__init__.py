@@ -8,14 +8,14 @@ IMAGE = "yokto"
 CONTAINER_NAME = "yocto-bg"
 CONTAINER_USER = "yocto"
 WORK_MOUNT = "/work"
-LEVELS = ("base", "wayland", "games", "chrome", "ai")
+LEVELS = ("base", "gui", "games", "chrome", "ai")
 LOCK_FILE = ROOT / ".build-lock"
 
 
-def _level(base=False, wayland=False, weston=False, chrome=False, games=False, ai=False):
+def _level(base=False, gui=False, games=False, chrome=False, ai=False):
     """Return the level string based on which level is requested.
     
-    One-of enumeration: base -> wayland -> games -> chrome -> ai
+    One-of enumeration: base -> gui -> games -> chrome -> ai
     """
     if ai:
         return "ai"
@@ -23,8 +23,8 @@ def _level(base=False, wayland=False, weston=False, chrome=False, games=False, a
         return "chrome"
     if games:
         return "games"
-    if wayland or weston:
-        return "wayland"
+    if gui:
+        return "gui"
     if base:
         return "base"
     return "base"
@@ -38,19 +38,19 @@ def _validate(level):
 
 def _kas_args(level):
     """Return appropriate config chain for level.
-    
-    Chain: base -> wayland -> games -> chrome -> ai
+
+    Chain: base -> gui -> chrome
     """
     if level == "base":
         return "kas/base.yml"
-    elif level == "wayland":
-        return "kas/base.yml:kas/wayland.yml"
-    elif level == "games":
-        return "kas/base.yml:kas/wayland.yml:kas/games.yml"
+    elif level == "gui":
+        return "kas/base.yml:kas/gui.yml"
     elif level == "chrome":
-        return "kas/base.yml:kas/wayland.yml:kas/games.yml:kas/chrome.yml"
+        return "kas/base.yml:kas/gui.yml:kas/chrome.yml"
+    elif level == "games":
+        return "kas/base.yml:kas/gui.yml:kas/games.yml"
     else:  # ai
-        return "kas/base.yml:kas/wayland.yml:kas/ai.yml"
+        return "kas/base.yml:kas/gui.yml:kas/ai.yml"
 
 
 # ── Lock file ─────────────────────────────────────────────────────────────
