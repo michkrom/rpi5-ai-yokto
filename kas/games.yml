@@ -1,12 +1,11 @@
-# Games configuration - extends wayland.yml
-# Use: kas build kas/base.yml:wayland.yml:games.yml
+# Games configuration - extends gui.yml
+# Use: kas build kas/base.yml:gui.yml:games.yml
 
 header:
   version: 18
 
 target:
   - core-image-weston
-  - yokto-games-swu
 
 repos:
   meta-quake3:

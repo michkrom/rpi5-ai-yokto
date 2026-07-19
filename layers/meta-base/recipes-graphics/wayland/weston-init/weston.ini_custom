@@ -1,0 +1,11 @@
+# configuration file for Weston
+
+[core]
+require-input=false
+idle-time=0
+
+[shell]
+# Run launcher once when Weston starts
+# This runs in the proper compositor session context
+startup-command=/usr/bin/weston-terminal --shell=/usr/bin/launcher-wrapper.sh
+locking=false

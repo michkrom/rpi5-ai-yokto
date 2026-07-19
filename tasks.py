@@ -97,15 +97,16 @@ def docker_init(ctx, no_cache=False):
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
+        "all": "All levels combined (gui + games + chrome + ai)",
         "update": "Force update of layer repos",
         "force": "Overwrite existing config files",
         "detach": "Run in background (for MCP)",
     }
 )
-def build_checkout(ctx, base=False, gui=False, chrome=False, games=False, ai=False, update=False, force=False, detach=False):
+def build_checkout(ctx, base=False, gui=False, chrome=False, games=False, ai=False, all=False, update=False, force=False, detach=False):
     """Fetch layers and write config (no build)."""
     _ensure_image(ctx)
-    level = _validate(_level(base, gui, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai, all))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -152,14 +153,15 @@ def build_checkout(ctx, base=False, gui=False, chrome=False, games=False, ai=Fal
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
+        "all": "All levels combined (gui + games + chrome + ai)",
         "log": "Save build output to a file (e.g. build-gui.log)",
         "detach": "Run in background (for MCP)",
     }
 )
-def build_start(ctx, base=False, gui=False, chrome=False, games=False, ai=False, log=None, detach=False):
+def build_start(ctx, base=False, gui=False, chrome=False, games=False, ai=False, all=False, log=None, detach=False):
     """Checkout layers and build the image."""
     _ensure_image(ctx)
-    level = _validate(_level(base, gui, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai, all))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -655,6 +657,7 @@ def _find_wic(level):
         "chrome": "image-chrome",
         "games": "image-games",
         "ai": "image-ai",
+        "all": "image-all",
     }
     
     basename = level_to_basename.get(level, "core-image-weston")
@@ -701,14 +704,15 @@ def _check_removable(device):
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
+        "all": "All levels combined (gui + games + chrome + ai)",
         "force": "Skip removable drive check",
         "nobmap": "Skip bmap usage, use dd instead",
         "dd": "Use dd instead of bmaptool",
     }
 )
-def flash(ctx, device=None, base=False, gui=False, chrome=False, games=False, ai=False, force=False, nobmap=False, dd=False):
+def flash(ctx, device=None, base=False, gui=False, chrome=False, games=False, ai=False, all=False, force=False, nobmap=False, dd=False):
     """Flash the built image to an SD card. Runs on host for USB access."""
-    level = _validate(_level(base, gui, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai, all))
 
     if not device or not device.startswith("/dev/"):
         raise Exit(f"Device must be an absolute path like /dev/sdX, got: {device}")

@@ -7,7 +7,7 @@
 set -e
 
 CONTAINER=${YOKTO_CONTAINER:-yocto-bg}
-USER=${YOKTO_USER:-yokto}
+USER=${YOKTO_USER:-yocto}
 IMAGE=${YOKTO_IMAGE:-yokto}
 
 # Check if container is running, start if not

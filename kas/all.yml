@@ -1,0 +1,44 @@
+# All configuration - extends all other levels
+# Use: kas build kas/base.yml:gui.yml:games.yml:chrome.yml:ai.yml
+
+header:
+  version: 18
+
+target:
+  - core-image-weston
+
+# Combine all repos from games and chrome (already includes meta-oe from gui)
+repos:
+  meta-quake3:
+    path: layers/meta-quake3
+  meta-doom:
+    path: layers/meta-doom
+  meta-games:
+    path: layers/meta-games
+  meta-browser:
+    url: https://github.com/OSSystems/meta-browser
+    refspec: 0dad36da5970315e53635b4b1c2013e1aec43a29
+    path: layers/meta-browser
+    layers:
+      meta-chromium:
+  meta-clang:
+    url: https://github.com/kraj/meta-clang
+    refspec: 5c602337ea1a80fb7217eeda04e396cf90587dca
+    path: layers/meta-clang
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded
+    refspec: scarthgap
+    path: layers/meta-openembedded
+    layers:
+      meta-oe:
+      meta-python:
+
+local_conf_header:
+  01_all: |
+    # Combine all packages
+    CORE_IMAGE_EXTRA_INSTALL += " q3e chocolate-doom launcher chromium-ozone-wayland mesa-megadriver egl-test sdl2-egl-test sdl2-window-test sdl2-renderer-test llama-cpp whisper-cpp"
+    IMAGE_NAME = "image-all"
+    # Ensure service is enabled
+    IMAGE_INSTALL:append = " llama-server"
+  02_rootfs-size: |
+    IMAGE_ROOTFS_EXTRA_SPACE = "4194304"  # 4GB extra space for AI models + games data

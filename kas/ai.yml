@@ -1,12 +1,11 @@
-# AI configuration - extends wayland.yml
-# Use: kas build kas/base.yml:wayland.yml:ai.yml
+# AI configuration - extends gui.yml
+# Use: kas build kas/base.yml:gui.yml:ai.yml
 
 header:
   version: 18
 
 target:
-  - core-image-weston
-  - yokto-ai-swu
+  - core-image-base
 
 repos:
   meta-ai:

@@ -18,6 +18,7 @@ This project includes AI agent tools built with [PI](https://github.com/badlogic
 | **games**  | gui + Quake3e + Chocolate Doom (gaming engines) |
 | **chrome** | gui + Chromium browser (independent from games) |
 | **ai** | gui + llama-cpp + whisper-cpp + llama-server (AI inference tools) |
+| **all** | gui + games + chrome + ai (complete image) |
 
 Each level builds upon the previous one in the chain: **base → gui → games**, and **base → gui → chrome → ai**. Chrome is now independent from games. To build Chrome + Games, combine both levels.
 
@@ -119,7 +120,8 @@ yokto/
 │   ├── gui.yml             # → core-image-gui + Wayland
 │   ├── ai.yml              # → core-image-gui + AI components: llama-cpp whisper-cpp llama-server
 │   ├── games.yml           # → core-image-games + Quake3e + Doom
-│   └── chrome.yml          # → core-image-chrome + Chromium (independent from games)
+│   ├── chrome.yml          # → core-image-chrome + Chromium (independent from games)
+│   └── all.yml             # → core-image-all + GUI + Games + Chrome + AI
 ├── layers/                   # Gitignored wholesale. Kas clones layers here.
 │   ├── poky/                   # OE-Core (cloned by kas)
 │   ├── meta-raspberrypi/       # RPi BSP (cloned by kas)
@@ -225,7 +227,8 @@ build/deploy/images/raspberrypi5/
 ├── core-image-base-raspberrypi5.rootfs.wic.bz2    # base level
 ├── core-image-gui-raspberrypi5.rootfs.wic.bz2  # gui level
 ├── core-image-games-raspberrypi5.rootfs.wic.bz2    # games level
-├── core-image-chrome-raspberrypi5.rootfs.wic.bz2   # chrome level (independent from games)
+├── core-image-chrome-raspberrypi5.rootfs.wic.bz2   # chrome level
+├── core-image-weston-raspberrypi5.rootfs.wic.bz2   # all level (when built)
 ├── image-ai-raspberrypi5.rootfs.wic.bz2           # ai level
 ├── image-ai.swu                                  # ai level OTA update
 ├── Image-*.bin                                    # Kernel

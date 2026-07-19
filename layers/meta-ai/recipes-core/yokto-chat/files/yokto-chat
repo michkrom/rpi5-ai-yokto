@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""
+Yokto Chat - Lightweight chat application for Raspberry Pi 5 AI image.
+Supports text-only and voice modes. Models must be pre-installed at /usr/share/models/
+"""
+
+import os
+import subprocess
+import sys
+import shutil
+import tempfile
+import argparse
+from pathlib import Path
+
+# Models directory
+MODELS_DIR = Path("/usr/share/models")
+LLAMA_CLI = "/usr/bin/llama-cli"
+WHISPER_CLI = "/usr/bin/whisper-cli"
+
+# Default models
+DEFAULT_LLAMA = "tinyllama-1.1b-openorca.Q4_K_M.gguf"
+DEFAULT_WHISPER = "ggml-base.bin"
+
+def get_memory_gb():
+    """Get system memory in GB."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) // (1024 * 1024)
+    except Exception:
+        pass
+    return 4  # Default
+
+def find_model(name_pattern):
+    """Find a model file matching pattern."""
+    for f in MODELS_DIR.glob(name_pattern):
+        return f
+    return None
+
+def check_audio():
+    """Check for audio recording capability."""
+    return any(shutil.which(cmd) for cmd in ["arecord", "rec", "pactl"])
+
+def record_audio():
+    """Record audio and return path."""
+    wav = tempfile.mktemp(suffix=".wav")
+    try:
+        if shutil.which("arecord"):
+            subprocess.run(["arecord", "-d", "5", "-f", "S16_LE", "-r", "16000", wav], 
+                        timeout=10)
+        elif shutil.which("rec"):
+            subprocess.run(["rec", "-q", "-r", "16000", wav, "trim", "0:5"], timeout=10)
+        return wav if Path(wav).exists() and Path(wav).stat().st_size > 1000 else None
+    except Exception:
+        return None
+
+def transcribe(audio_path, model_path):
+    """Transcribe audio to text using whisper-cli."""
+    out_dir = tempfile.mkdtemp()
+    try:
+        subprocess.run([WHISPER_CLI, "-m", str(model_path), "-f", audio_path, 
+                     "-o", out_dir, "--output-txt"], timeout=120)
+        for f in Path(out_dir).glob("*.txt"):
+            return f.read_text().strip()
+    except Exception as e:
+        print(f"Transcription error: {e}", file=sys.stderr)
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return None
+
+def generate(prompt, model_path):
+    """Generate response using llama-cli."""
+    try:
+        r = subprocess.run([LLAMA_CLI, "-m", str(model_path), "-p", prompt, "-n", "256", "--temp", "0.7"],
+                        capture_output=True, text=True, timeout=180)
+        return r.stdout.strip()
+    except Exception as e:
+        return f"Error: {e}"
+
+def text_chat(model_path):
+    """Text-only chat interface."""
+    print("Yokto Chat (text mode). Ctrl+C or 'quit' to exit.")
+    print(f"Model: {model_path.name}")
+    while True:
+        try:
+            prompt = input("\n> ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        if prompt.lower() in ["quit", "exit", "q"]:
+            break
+        if not prompt.strip():
+            continue
+        print("Thinking...", file=sys.stderr)
+        response = generate(prompt, model_path)
+        print(f"\n{response}")
+
+def voice_chat(model_path, whisper_path):
+    """Voice + text chat interface."""
+    print("Yokto Chat (voice mode). Ctrl+C or 'quit' to exit.")
+    print(f"LLM Model: {model_path.name}")
+    print(f"STT Model: {whisper_path.name}")
+    while True:
+        try:
+            user = input("\n[Enter=speak/text=type/quit] ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        if user.lower() in ["quit", "exit", "q"]:
+            break
+
+        if user.strip():
+            prompt = user
+        elif check_audio():
+            wav = record_audio()
+            if wav:
+                prompt = transcribe(wav, whisper_path)
+                Path(wav).unlink(missing_ok=True)
+                if not prompt:
+                    print("Could not transcribe.")
+                    continue
+                print(f"You: {prompt}")
+            else:
+                print("No audio recorded.")
+                continue
+        else:
+            continue
+
+        print("Thinking...", file=sys.stderr)
+        response = generate(prompt, model_path)
+        print(f"\nAI: {response}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Yokto Chat - AI chat for RPi5")
+    parser.add_argument("--text", action="store_true", help="Text-only mode")
+    parser.add_argument("--voice", action="store_true", help="Voice mode (default if audio available)")
+    parser.add_argument("--model", help="Model file (default: auto-detect)")
+    parser.add_argument("--whisper", help="Whisper model file (default: auto-detect)")
+    args = parser.parse_args()
+
+    # Ensure models directory exists
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Find models
+    llama_model = Path(args.model) if args.model else find_model("*.gguf")
+    if not llama_model:
+        # Try default location
+        llama_model = MODELS_DIR / DEFAULT_LLAMA
+        print(f"Note: Place a GGUF model at {llama_model}", file=sys.stderr)
+    
+    whisper_model = Path(args.whisper) if args.whisper else find_model("ggml-*.bin")
+    has_audio = check_audio()
+    
+    if args.voice or (not args.text and has_audio):
+        if whisper_model:
+            voice_chat(llama_model, whisper_model)
+        else:
+            print("No whisper model found. Use --model for LLM, --whisper for STT", file=sys.stderr)
+            text_chat(llama_model)
+    else:
+        text_chat(llama_model)
+
+if __name__ == "__main__":
+    main()

@@ -8,7 +8,7 @@
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-const LEVELS = ["base", "wayland", "games", "chrome"] as const;
+const LEVELS = ["base", "gui", "games", "chrome", "ai"] as const;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -161,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 		label: "Build Checkout",
 		description: "Fetch layers and write config (no build). Runs in background via --detach.",
 		parameters: Type.Object({
-			level: Type.String({ description: "Build level: base, wayland, games, chrome,", default: "base" }),
+			level: Type.String({ description: "Build level: base, wayland, games, chrome, ai", default: "base" }),
 			update: Type.Boolean({ description: "Force update of layer repos", default: false }),
 			force: Type.Boolean({ description: "Overwrite existing config files", default: false }),
 			detach: Type.Boolean({ description: "Run in background (for MCP)", default: false }),
@@ -187,19 +187,19 @@ export default function (pi: ExtensionAPI) {
 		name: "invoke_build_start",
 		label: "Build Start",
 		description: "Checkout layers and build the image. Monitor with invoke_build_status. Stop with invoke_build_stop.",
-		promptSnippet: "invoke_build_start(level) — start a detached Yocto build for core/wayland/chrome/quake3",
+		promptSnippet: "invoke_build_start(level) — start a detached Yocto build for base/wayland/games/chrome/ai",
 		promptGuidelines: [
 			"Use invoke_build_start when the user asks to build a Yocto image or compile the project.",
-			"Use invoke_build_start when the user wants to build for a specific level (core, wayland, chrome, quake3).",
+			"Use invoke_build_start when the user wants to build for a specific level (base, wayland, games, chrome, ai).",
 			"After calling invoke_build_start, monitor progress with invoke_build_status or invoke_build_last.",
 			"Only one build or checkout can run at a time; invoke_build_start will fail if another is running.",
 		],
 		parameters: Type.Object({
-			level: Type.String({ description: "Build level: core, wayland, chrome, or quake3" }),
+			level: Type.String({ description: "Build level: base, wayland, games, chrome, or ai", default: "base" }),
 			detach: Type.Boolean({ description: "Run in background (for MCP)", default: true }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
-			const level = params.level ?? "core";
+			const level = params.level ?? "base";
 			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
 				return {
 					content: [{ type: "text", text: `Unknown level '${level}'. Choose: ${LEVELS.join(", ")}` }],
@@ -259,11 +259,11 @@ export default function (pi: ExtensionAPI) {
 		label: "Shell",
 		description: "Open a shell with kas environment configured (sources checked out).",
 		parameters: Type.Object({
-			level: Type.String({ description: "Build level for env setup", default: "core" }),
+			level: Type.String({ description: "Build level for env setup", default: "base" }),
 			command: Type.String({ description: "Optional command to run (if blank, opens interactive shell)", default: "" }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
-			const level = params.level ?? "core";
+			const level = params.level ?? "base";
 			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
 				return {
 					content: [{ type: "text", text: `Unknown level '${level}'. Choose: ${LEVELS.join(", ")}` }],
@@ -282,11 +282,11 @@ export default function (pi: ExtensionAPI) {
 		label: "Build Shell",
 		description: "Enter kas shell with environment configured. Without --command: enters interactive shell. With --command: runs the command in kas environment.",
 		parameters: Type.Object({
-			level: Type.String({ description: "Build level for env setup", default: "core" }),
+			level: Type.String({ description: "Build level for env setup", default: "base" }),
 			command: Type.String({ description: "Command to run (if omitted, enters interactive shell)", default: "" }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
-			const level = params.level ?? "core";
+			const level = params.level ?? "base";
 			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
 				return {
 					content: [{ type: "text", text: `Unknown level '${level}'. Choose: ${LEVELS.join(", ")}` }],
@@ -326,10 +326,10 @@ export default function (pi: ExtensionAPI) {
 		label: "Build Rebuild",
 		description: "Clean checkout layers + build output, then checkout and build from scratch.",
 		parameters: Type.Object({
-			level: Type.String({ description: "Build level", default: "core" }),
+			level: Type.String({ description: "Build level", default: "base" }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
-			const level = params.level ?? "core";
+			const level = params.level ?? "base";
 			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
 				return {
 					content: [{ type: "text", text: `Unknown level '${level}'. Choose: ${LEVELS.join(", ")}` }],
@@ -358,11 +358,11 @@ export default function (pi: ExtensionAPI) {
 		description: "Flash a built .wic.bz2 image to an SD card.",
 		parameters: Type.Object({
 			device: Type.String({ description: "Block device path (e.g. /dev/sdb)" }),
-			level: Type.String({ description: "Build level whose image to flash", default: "core" }),
+			level: Type.String({ description: "Build level whose image to flash", default: "base" }),
 			force: Type.Boolean({ description: "Skip removable drive safety check", default: false }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
-			const level = params.level ?? "core";
+			const level = params.level ?? "base";
 			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
 				return {
 					content: [{ type: "text", text: `Unknown level '${level}'. Choose: ${LEVELS.join(", ")}` }],

@@ -80,8 +80,9 @@ Available tools include:
 3. **games** - gui + Quake3e + Chocolate Doom
 4. **chrome** - gui + Chromium browser (independent from games)
 5. **ai** - gui + llama-cpp + whisper-cpp + llama-server service
+6. **all** - gui + games + chrome + ai (complete image)
 
-> **Note:** Chrome is now independent from games. To get Chrome + Games, build both levels together.
+> **Note:** Chrome and games are now independent levels. Use `--all` to combine all functionality into one image.
 
 ### Project Structure
 ```
