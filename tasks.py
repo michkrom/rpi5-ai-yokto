@@ -93,8 +93,7 @@ def docker_init(ctx, no_cache=False):
 @task(
     help={
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
@@ -103,10 +102,10 @@ def docker_init(ctx, no_cache=False):
         "detach": "Run in background (for MCP)",
     }
 )
-def build_checkout(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, update=False, force=False, detach=False):
+def build_checkout(ctx, base=False, gui=False, chrome=False, games=False, ai=False, update=False, force=False, detach=False):
     """Fetch layers and write config (no build)."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -149,19 +148,18 @@ def build_checkout(ctx, base=False, wayland=False, weston=False, chrome=False, g
 @task(
     help={
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
-        "log": "Save build output to a file (e.g. build-chrome.log)",
+        "log": "Save build output to a file (e.g. build-gui.log)",
         "detach": "Run in background (for MCP)",
     }
 )
-def build_start(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, log=None, detach=False):
+def build_start(ctx, base=False, gui=False, chrome=False, games=False, ai=False, log=None, detach=False):
     """Checkout layers and build the image."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
     _assert_no_running_build(ctx)
 
     if detach:
@@ -463,18 +461,17 @@ def build_stop(ctx, force=False, lines=10):
 @task(
     help={
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "command": "Command to run in the kas shell (if omitted, enters interactive shell)",
     }
 )
-def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, command=""):
+def shell(ctx, base=False, gui=False, chrome=False, games=False, ai=False, command=""):
     """Open a shell with kas environment configured (sources checked out)."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
     if command:
         _run_in_container(
             ctx,
@@ -494,22 +491,21 @@ def shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=Fals
 @task(
     help={
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "command": "Command to run in the kas shell (if omitted, enters interactive shell)",
     }
 )
-def build_shell(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, command=""):
+def build_shell(ctx, base=False, gui=False, chrome=False, games=False, ai=False, command=""):
     """Enter kas shell with environment configured.
     
     Without --command: enters interactive shell.
     With --command: runs the command in kas environment.
     """
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
     if command:
         _run_in_container(
             ctx,
@@ -652,10 +648,10 @@ def _find_wic(level):
     """Find the correct wic.bz2 image for a level."""
     images_dir = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5"
     
-    # Map levels to their image basenames (new naming)
+    # Map levels to their image basenames (exact naming)
     level_to_basename = {
         "base": "image-base",
-        "wayland": "image-wayland",
+        "gui": "image-gui",
         "chrome": "image-chrome",
         "games": "image-games",
         "ai": "image-ai",
@@ -668,16 +664,16 @@ def _find_wic(level):
     if target.exists():
         return target
     
+    # Check for symlinks pointing to the expected image
     matches = sorted(f for f in images_dir.glob(f"{basename}-raspberrypi5.rootfs.wic.bz2") if f.exists())
     if matches:
         return matches[-1]
     
-    # Fallback: look for any wic.bz2 file for backward compatibility
-    wic_files = sorted(images_dir.glob("*.wic.bz2"))
-    if wic_files:
-        return wic_files[-1]
-    
-    raise Exit(f"No .wic.bz2 found for level '{level}'. Run 'invoke build-start --{level}' first.")
+    # NO fallback - require exact match to prevent flashing wrong image
+    raise Exit(
+        f"No .wic.bz2 found for level '{level}' (expected: {basename}). "
+        f"Run 'invoke build-start --{level}' first."
+    )
 
 
 def _check_removable(device):
@@ -701,8 +697,7 @@ def _check_removable(device):
     help={
         "device": "Target block device (e.g. /dev/sdb)",
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
@@ -711,9 +706,9 @@ def _check_removable(device):
         "dd": "Use dd instead of bmaptool",
     }
 )
-def flash(ctx, device=None, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, force=False, nobmap=False, dd=False):
+def flash(ctx, device=None, base=False, gui=False, chrome=False, games=False, ai=False, force=False, nobmap=False, dd=False):
     """Flash the built image to an SD card. Runs on host for USB access."""
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
 
     if not device or not device.startswith("/dev/"):
         raise Exit(f"Device must be an absolute path like /dev/sdX, got: {device}")
@@ -849,18 +844,17 @@ def docker_purge(ctx):
 @task(
     help={
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
         "detach": "Run in background",
     }
 )
-def swu_generate(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, detach=False):
+def swu_generate(ctx, base=False, gui=False, chrome=False, games=False, ai=False, detach=False):
     """Generate a .swu update file from a built image."""
     _ensure_image(ctx)
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
     _assert_no_running_build(ctx)
 
     _ensure_container(ctx)
@@ -868,7 +862,7 @@ def swu_generate(ctx, base=False, wayland=False, weston=False, chrome=False, gam
     # Map levels to image base names
     level_to_image = {
         "base": "image-base",
-        "wayland": "image-wayland",
+        "gui": "image-gui",
         "chrome": "image-chrome",
         "games": "image-games",
         "ai": "image-ai",
@@ -944,8 +938,7 @@ echo "SWU created: {swu_name}"
 @task(
     help={
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
@@ -953,23 +946,23 @@ echo "SWU created: {swu_name}"
         "force": "Skip removable drive check",
     }
 )
-def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, device=None, force=False):
+def swu_flash(ctx, base=False, gui=False, chrome=False, games=False, ai=False, device=None, force=False):
     """Flash a .swu update file to an SD card.
     
     Finds the most recent .swu file for the specified level and flashes it.
     """
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
     
     # Map levels to image names for new SWU naming
     level_to_image = {
         "base": "image-base",
-        "wayland": "image-wayland",
+        "gui": "image-gui",
         "chrome": "image-chrome",
         "games": "image-games",
         "ai": "image-ai",
     }
     
-    image_name = level_to_image.get(level, "image-wayland")
+    image_name = level_to_image.get(level, "image-gui")
     
     # First, look in deploy directory (new SWU naming)
     deploy_swu = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5" / f"{image_name}.swu"
@@ -1024,8 +1017,7 @@ def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=
 @task(
     help={
         "base": "Minimal headless image (default)",
-        "wayland": "Wayland desktop + Weston",
-        "weston": "Alias for --wayland",
+        "gui": "Wayland desktop + Weston",
         "chrome": "Wayland + Chromium",
         "games": "Wayland + games",
         "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
@@ -1034,13 +1026,13 @@ def swu_flash(ctx, base=False, wayland=False, weston=False, chrome=False, games=
         "swu": "Explicit path to .swu file (overrides level-based search)",
     }
 )
-def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=False, ai=False, host=None, user="root", swu=None):
+def swu_apply(ctx, base=False, gui=False, chrome=False, games=False, ai=False, host=None, user="root", swu=None):
     """Apply a .swu update to a running target device via SSH.
     
     Uses level flags to find the appropriate .swu file, or accepts explicit --swu path.
     Attempts /tmp first, falls back to /root if insufficient space.
     """
-    level = _validate(_level(base, wayland, weston, chrome, games, ai))
+    level = _validate(_level(base, gui, chrome, games, ai))
     
     # Find the .swu file
     if swu:
@@ -1051,13 +1043,13 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
         # Map levels to image names for new SWU naming
         level_to_image = {
             "base": "image-base",
-            "wayland": "image-wayland",
+            "gui": "image-gui",
             "chrome": "image-chrome",
             "games": "image-games",
         "ai": "image-ai",
         }
         
-        image_name = level_to_image.get(level, "image-wayland")
+        image_name = level_to_image.get(level, "image-gui")
         
         # First, look in deploy directory (new SWU naming)
         deploy_swu = ROOT / "build" / "tmp" / "deploy" / "images" / "raspberrypi5" / f"{image_name}.swu"
@@ -1090,8 +1082,9 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
         print(f"Trying to copy to {tmp_path} on target...")
         
         # Copy the SWU file to the target (capture output, filter, then display)
+        scp_cmd = ["scp"] + ssh_opts + [str(swu_path), f"{user}@{host}:{tmp_path}/{swu_path.name}"]
         r = ctx.run(
-            ["scp"] + ssh_opts + [str(swu_path), f"{user}@{host}:{tmp_path}/{swu_path.name}"],
+            shlex.join(scp_cmd),
             echo=False, hide=False, warn=True, encoding="utf-8"
         )
         
@@ -1102,9 +1095,10 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
                 print(output)
             
             # Verify file was copied correctly by checking size on target
+            ssh_cmd = ["ssh"] + ssh_opts + ["-p", str(22), f"{user}@{host}",
+             f"ls -la {tmp_path}/{swu_path.name} 2>/dev/null && wc -c < {tmp_path}/{swu_path.name}"]
             vr = ctx.run(
-                ["ssh"] + ssh_opts + ["-p", str(22), f"{user}@{host}",
-                 f"ls -la {tmp_path}/{swu_path.name} 2>/dev/null && wc -c < {tmp_path}/{swu_path.name}"],
+                shlex.join(ssh_cmd),
                 hide=True, warn=True
             )
             vr.stdout = _filter_ssh_output(vr.stdout)
@@ -1135,9 +1129,10 @@ def swu_apply(ctx, base=False, wayland=False, weston=False, chrome=False, games=
     print(f"Applying update on target (using {target_path})...")
     
     # Apply the update directly with swupdate tool
+    swupdate_cmd = ["ssh"] + ssh_opts + ["-p", str(22), f"{user}@{host}",
+         f"/usr/bin/swupdate -i {target_path}/{swu_path.name}"]
     r = ctx.run(
-        ["ssh"] + ssh_opts + ["-p", str(22), f"{user}@{host}",
-         f"/usr/bin/swupdate -i {target_path}/{swu_path.name}"],
+        shlex.join(swupdate_cmd),
         echo=False, hide=False, warn=True, encoding="utf-8"
     )
     

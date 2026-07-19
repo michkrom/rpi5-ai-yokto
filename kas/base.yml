@@ -10,7 +10,6 @@ distro: poky
 
 target:
   - core-image-base
-  - yokto-base-swu
 
 repos:
   poky:
@@ -46,7 +45,7 @@ local_conf_header:
   standard: |
     CONF_VERSION = "2"
     DISTRO = "poky"
-    PACKAGE_CLASSES = "package_rpm"
+    PACKAGE_CLASSES = "package_ipk"
     SDKMACHINE = "x86_64"
     USER_CLASSES = "buildstats"
     PATCHRESOLVE = "noop"
@@ -83,7 +82,7 @@ local_conf_header:
   tools: |
     CORE_IMAGE_EXTRA_INSTALL += "util-linux pciutils usbutils i2c-tools vim curl wget python3 file ldd binutils"
   swupdate: |
-    CORE_IMAGE_EXTRA_INSTALL += "swupdate swupdate-apply"
+    # CORE_IMAGE_EXTRA_INSTALL += "swupdate swupdate-apply swupdate-cfg"
   debug-tweaks: |
     EXTRA_IMAGE_FEATURES = "debug-tweaks"
   users: |
