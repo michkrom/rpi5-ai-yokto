@@ -4,9 +4,6 @@
 header:
   version: 18
 
-target:
-  - core-image-base
-
 repos:
   meta-ai:
     path: layers/meta-ai

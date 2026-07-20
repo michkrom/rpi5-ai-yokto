@@ -35,10 +35,9 @@ repos:
 
 local_conf_header:
   01_all: |
-    # Combine all packages
     CORE_IMAGE_EXTRA_INSTALL += " q3e chocolate-doom launcher chromium-ozone-wayland mesa-megadriver egl-test sdl2-egl-test sdl2-window-test sdl2-renderer-test llama-cpp whisper-cpp"
-    IMAGE_NAME = "image-all"
-    # Ensure service is enabled
     IMAGE_INSTALL:append = " llama-server"
-  02_rootfs-size: |
-    IMAGE_ROOTFS_EXTRA_SPACE = "4194304"  # 4GB extra space for AI models + games data
+  z_all-image-name: |
+    IMAGE_NAME = "image-all"
+  z_rootfs-size: |
+    IMAGE_ROOTFS_EXTRA_SPACE = "4194304"

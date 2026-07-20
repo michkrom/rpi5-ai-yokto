@@ -54,7 +54,7 @@ def _kas_args(level):
     elif level == "ai":
         return "kas/base.yml:kas/gui.yml:kas/ai.yml"
     else:  # all
-        return "kas/base.yml:kas/gui.yml:kas/games.yml:kas/chrome.yml:kas/ai.yml"
+        return "kas/base.yml:kas/gui.yml:kas/games.yml:kas/chrome.yml:kas/ai.yml:kas/all.yml"
 
 
 # ── Lock file ─────────────────────────────────────────────────────────────

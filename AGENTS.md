@@ -108,6 +108,13 @@ The `--ai` level builds `core-image-weston` with these AI packages:
 - `llama-cpp` installs all `libggml*` shared libraries
 - `whisper-cpp` only installs `libwhisper*` (not `libggml*`) and depends on `llama-cpp` for shared ggml
 
+### Config Inheritance
+
+Each level config in `kas/*.yml` extends the previous levels. To avoid conflicts:
+- Individual level configs (`gui.yml`, `games.yml`, `chrome.yml`, `ai.yml`) **do not set `target`** - they inherit from `base.yml` or `gui.yml`
+- `all.yml` is included at the end of the `--all` chain to set `IMAGE_NAME = "image-all"` as the final override
+- This prevents multiple targets from being built into the same deploy directory
+
 ## Key Tips for Agents
 - Inspect invoke tooling and MCP wrappers before using explicit docker commands
 - **Always use detached builds (`invoke build-start --detach`) to avoid token waste from long build logs**

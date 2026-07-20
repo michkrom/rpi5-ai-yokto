@@ -661,14 +661,20 @@ def _find_wic(level):
     }
     
     basename = level_to_basename.get(level, "core-image-weston")
+    
+    # First, check for the direct image file (custom IMAGE_NAME)
     pattern = f"{basename}-raspberrypi5.rootfs.wic.bz2"
     target = images_dir / pattern
-    
     if target.exists():
         return target
     
+    # Check for direct IMAGE_NAME file (e.g., image-all.wic.bz2)
+    direct = images_dir / f"{basename}.wic.bz2"
+    if direct.exists():
+        return direct
+    
     # Check for symlinks pointing to the expected image
-    matches = sorted(f for f in images_dir.glob(f"{basename}-raspberrypi5.rootfs.wic.bz2") if f.exists())
+    matches = sorted(f for f in images_dir.glob("core-image-weston-raspberrypi5.rootfs.wic.bz2") if f.exists())
     if matches:
         return matches[-1]
     
