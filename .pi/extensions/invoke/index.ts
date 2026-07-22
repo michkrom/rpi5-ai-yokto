@@ -8,7 +8,7 @@
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-const LEVELS = ["base", "gui", "games", "chrome", "ai"] as const;
+const LEVELS = ["base", "gui", "games", "chrome", "ai", "all"] as const;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -305,15 +305,17 @@ export default function (pi: ExtensionAPI) {
 		label: "Build Clean",
 		description: "Remove build output. Preserves downloads/ and sstate/ by default.",
 		parameters: Type.Object({
-			layers: Type.Boolean({ description: "Also remove kas-cloned layers", default: false }),
-			sstate: Type.Boolean({ description: "Also remove sstate cache", default: false }),
-			recipe: Type.String({ description: "Clean a specific recipe from sstate", default: "" }),
-			all: Type.Boolean({ description: "Remove everything", default: false }),
+			layers: Type.Optional(Type.Boolean({ description: "Also remove kas-cloned layers", default: false })),
+			sstate: Type.Optional(Type.Boolean({ description: "Also remove sstate cache", default: false })),
+			recipe: Type.Optional(Type.String({ description: "Clean a specific recipe from sstate", default: "" })),
+			tmp_only: Type.Optional(Type.Boolean({ description: "Remove only build/tmp directory, keeping sstate-cache", default: false })),
+			all: Type.Optional(Type.Boolean({ description: "Remove everything", default: false })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
 			const args: string[] = [];
 			if (params.layers) args.push("--layers");
 			if (params.sstate) args.push("--sstate");
+			if (params.tmp_only) args.push("--tmp-only");
 			if (params.all) args.push("--all");
 			if (params.recipe) args.push(`--recipe=${params.recipe}`);
 			const r = await runInvokeShortCtx("build-clean", args);
@@ -358,10 +360,16 @@ export default function (pi: ExtensionAPI) {
 		description: "Flash a built .wic.bz2 image to an SD card.",
 		parameters: Type.Object({
 			device: Type.String({ description: "Block device path (e.g. /dev/sdb)" }),
-			level: Type.String({ description: "Build level whose image to flash", default: "base" }),
-			force: Type.Boolean({ description: "Skip removable drive safety check", default: false }),
+			level: Type.Optional(Type.String({ description: "Build level whose image to flash", default: "base" })),
+			force: Type.Optional(Type.Boolean({ description: "Skip removable drive safety check", default: false })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
+			if (!params.device || !params.device.startsWith("/dev/")) {
+				return {
+					content: [{ type: "text", text: `Device must be an absolute path like /dev/sdX, got: ${params.device}` }],
+					details: { error: "invalid_device" },
+				};
+			}
 			const level = params.level ?? "base";
 			if (!LEVELS.includes(level as (typeof LEVELS)[number])) {
 				return {
@@ -384,15 +392,15 @@ export default function (pi: ExtensionAPI) {
 		description: "Connect to a target Raspberry Pi 5 via SSH.",
 		parameters: Type.Object({
 			host: Type.String({ description: "IP or hostname of the RPi5" }),
-			user: Type.String({ description: "SSH user", default: "root" }),
-			port: Type.Number({ description: "SSH port", default: 22 }),
-			key: Type.String({ description: "Path to SSH private key (optional)", default: "" }),
+			user: Type.Optional(Type.String({ description: "SSH user", default: "root" })),
+			port: Type.Optional(Type.Number({ description: "SSH port", default: 22 })),
+			key: Type.Optional(Type.String({ description: "Path to SSH private key (optional)", default: "" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate) {
 			_target.host = params.host;
-			_target.user = params.user;
-			_target.port = params.port;
-			_target.key = params.key;
+			_target.user = params.user ?? "root";
+			_target.port = params.port ?? 22;
+			_target.key = params.key ?? "";
 			try {
 				const r = await sshExec("echo OK");
 				if (r.includes("OK")) {
@@ -540,7 +548,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(images);
 	pi.registerTool(flash);
 
-	// Target
+	// Target (duplicate tools also registered in .pi/extensions/target/index.ts)
 	pi.registerTool(targetConnect);
 	pi.registerTool(targetDisconnect);
 	pi.registerTool(targetStatus);

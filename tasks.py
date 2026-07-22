@@ -838,6 +838,26 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", tmp_only=False, all=
             )
 
 
+@task(
+    help={
+        "base": "Minimal headless image (default)",
+        "gui": "Wayland desktop + Weston",
+        "chrome": "Wayland + Chromium",
+        "games": "Wayland + games",
+        "ai": "Wayland + AI tools (llama.cpp, whisper.cpp)",
+        "all": "All levels combined (gui + games + chrome + ai)",
+    }
+)
+def build_rebuild(ctx, base=False, gui=False, chrome=False, games=False, ai=False, all=False):
+    """Clean checkout layers + build output, then checkout and build from scratch."""
+    level = _validate(_level(base, gui, chrome, games, ai, all))
+    _assert_no_running_build(ctx)
+
+    # Clean layers + tmp, but preserve downloads and sstate-cache
+    build_clean(ctx, layers=True, tmp_only=False, all=False)
+
+    # Now checkout and build
+    build_start(ctx, **{level: True}, detach=False)
 
 
 @task
