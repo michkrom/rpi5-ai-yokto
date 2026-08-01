@@ -486,7 +486,7 @@ def shell(ctx, base=False, gui=False, chrome=False, games=False, ai=False, comma
         ctx.run(
             f'docker exec -u {CONTAINER_USER} -it {CONTAINER_NAME} bash -c '
             f'"cd {WORK_MOUNT} && kas shell {_kas_args(level)}"',
-            pty=False,
+            pty=True,
         )
 
 
@@ -530,7 +530,7 @@ def container_shell(ctx):
     _ensure_container(ctx)
     ctx.run(
         f'docker exec -u {CONTAINER_USER} -it {CONTAINER_NAME} bash',
-        pty=False,
+        pty=True,
     )
 
 

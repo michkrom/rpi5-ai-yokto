@@ -1,3 +1,5 @@
+CORE_IMAGE_EXTRA_INSTALL += "swupdate-cfg"
+
 ROOTFS_POSTPROCESS_COMMAND:append = " install_ssh_keys; "
 
 install_ssh_keys() {
