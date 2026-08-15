@@ -22,8 +22,12 @@ repos:
       meta-yocto-bsp:
 
   meta-raspberrypi:
+    # Pin to the EXACT commit that the known-good ../poky-rpi build is on
+    # (2c646d2 "rpi-config: ENABLE_UART for CM5 IO Board", scarthgap). Our
+    # previously-diverged scarthgap HEAD differed in recipes-kernel/linux and
+    # boot files; this mirrors the proven-boot layer exactly.
     url: https://github.com/agherzan/meta-raspberrypi
-    refspec: scarthgap
+    refspec: 2c646d29912dcc873469a57b1c207e1549c5094d
     path: layers/meta-raspberrypi
 
   meta-base:
@@ -54,13 +58,25 @@ local_conf_header:
     LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
     IONICE = ""
     BB_TASK_NICE_LEVEL = ""
-    # Keep console
-    SERIAL_CONSOLE = "115200 ttyAMA0"
-    APPEND = "console=tty1 console=ttyAMA0,115200"
-    # Raspberry Pi config for GPU/display
-    RPI_EXTRA_CONFIG = "dtoverlay=vc4-kms-v3d-pi5\nmax_framebuffers=2\ndisable_fw_kms_setup=1\narm_boost=1"
-    # Use kernel 6.12 for better vc4 driver support
-    PREFERRED_VERSION:pn-linux-raspberrypi = "6.12%"
+    # MATCH the known-good ../poky-rpi build (which boots): do NOT enable the
+    # UART console here. poky-rpi's boot partition is just
+    #   config.txt  -> dtoverlay=vc4-kms-v3d  (no enable_uart)
+    #   cmdline.txt -> ... root=.../mmcblk0p2 ...  (no console=serial0)
+    # ENABLE_UART=1 injected BOTH 'enable_uart=1' (config.txt) AND
+    # 'console=serial0,115200' (cmdline.txt, via rpi-cmdline CMDLINE_SERIAL)
+    # and that combination hangs after BL31 on the Pi5. Leave them unset so the
+    # kernel console falls back to the DTB stdout-path exactly like the working
+    # poky-rpi image.
+    # Raspberry Pi config: keep BASE minimal/headless -> leave RPI_EXTRA_CONFIG
+    # UNSET here. meta-raspberrypi already adds 'dtoverlay=vc4-kms-v3d' for vc4
+    # machines, which is exactly what the working base uses. NOTE: do NOT set
+    # RPI_EXTRA_CONFIG in base.yml - kas emits level headers in an order where
+    # base's assignment would override gui.yml's display config (last wins). The
+    # vc4-kms-v3d-pi5 / disable_fw_kms_setup display settings hung after BL31,
+    # so they must only ever be set by the GUI layer (gui.yml), never base.
+    # Do NOT override the kernel version here - use the default from the
+    # pinned meta-raspberrypi commit (rpi-default-versions.inc defaults to
+    # linux-raspberrypi 6.6.% = 6.6.63, exactly what ../poky-rpi boots).
     # Use meta-raspberrypi mesa 25.1.6 (supports vc4/v3d drivers for RPi)
     # COMPATIBLE_MACHINE fix for raspberrypi5 is in meta-base mesa_.bbappend
     PREFERRED_VERSION:pn-mesa = "25.1.6%"

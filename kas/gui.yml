@@ -17,7 +17,20 @@ local_conf_header:
     CORE_IMAGE_EXTRA_INSTALL += " weston-examples mesa-megadriver alsa-utils libxml2"
     DISTRO_FEATURES:append = " wayland pam vulkan opengl"
     DISTRO_FEATURES:remove = " x11"
-    PREFERRED_VERSION:pn-linux-raspberrypi = "6.12%"
+    # Kernel version is intentionally NOT overridden here - it inherits the
+    # default (6.6.63) from the pinned meta-raspberrypi commit so we match the
+    # known-good ../poky-rpi boot exactly.
+    # Pi 5 display config for the Weston/GUI desktop (HDMI output). This lives
+    # HERE (gui layer) and NOT in base.yml so the headless base stays boot-safe.
+    # IMPORTANT (boot hang): do NOT append a second dtoverlay here. meta-raspberrypi's
+    # rpi-config already writes 'dtoverlay=vc4-kms-v3d' (VC4DTBO default) into
+    # config.txt. Adding 'dtoverlay=vc4-kms-v3d-pi5' as well leaves BOTH overlays
+    # active, which hangs the RPi5 in the firmware stage (after BL31, black screen,
+    # no serial) - exactly the failure the --all build hits while headless base
+    # (only vc4-kms-v3d) boots. Instead override VC4DTBO so rpi-config writes the
+    # single correct Pi5 overlay. max_framebuffers/arm_boost are benign.
+    VC4DTBO = "vc4-kms-v3d-pi5"
+    RPI_EXTRA_CONFIG = "max_framebuffers=2\narm_boost=1"
     PREFERRED_VERSION:pn-mesa = "25.1.6%"
     RDEPENDS:weston:append = " pixman"
     # Enable OpenGL support
