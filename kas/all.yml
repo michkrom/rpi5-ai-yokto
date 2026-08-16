@@ -35,7 +35,7 @@ repos:
 
 local_conf_header:
   01_all: |
-    CORE_IMAGE_EXTRA_INSTALL += " q3e chocolate-doom launcher chromium-ozone-wayland mesa-megadriver egl-test sdl2-egl-test sdl2-window-test sdl2-renderer-test llama-cpp whisper-cpp yokto-chat llama-server"
+    CORE_IMAGE_EXTRA_INSTALL += " q3e chocolate-doom launcher chromium-ozone-wayland mesa-megadriver egl-test sdl2-egl-test sdl2-window-test sdl2-renderer-test llama-cpp whisper-cpp yokto-ai-menu llama-server"
   z_all-image-name: |
     IMAGE_NAME = "image-all"
   z_rootfs-size: |

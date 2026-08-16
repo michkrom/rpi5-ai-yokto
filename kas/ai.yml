@@ -10,7 +10,7 @@ repos:
 
 local_conf_header:
   02_ai: |
-    CORE_IMAGE_EXTRA_INSTALL += "llama-cpp whisper-cpp llama-server yokto-chat swupdate"
+    CORE_IMAGE_EXTRA_INSTALL += "llama-cpp whisper-cpp llama-server yokto-ai-menu swupdate"
     IMAGE_NAME = "image-ai"
   03_rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "4194304"

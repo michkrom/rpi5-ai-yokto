@@ -1,0 +1,545 @@
+#!/usr/bin/env python3
+"""
+yokto ai-menu
+=============
+Menu + CLI for the --ai image: model management (download/list/remove),
+llama-server control (start/stop/status) and chat launchers
+(langchain chat or plain llama-cli chat).
+
+The model catalogue is memory-aware: the Pi 5 ships with 4 GB or 8 GB RAM,
+and llama.cpp is CPU-only here, so the menu ranks models by what fits and
+runs smoothly on the detected RAM.
+
+CLI / programmable use (no human interaction needed):
+
+  ai-menu --list                          # catalogue + installed status + RAM tier
+  ai-menu --ram                           # print detected RAM / recommended tier
+  ai-menu --download qwen0.5              # download a model (by id or name fragment)
+  ai-menu --download --id 2 --force       # download by catalogue number, re-fetch
+  ai-menu --remove llama3.2-1b            # delete a downloaded model file
+  ai-menu --server start --model 2        # start llama-server with catalogue id 2
+  ai-menu --server start --model /path/x.gguf
+  ai-menu --server stop
+  ai-menu --server status
+  ai-menu --chat langchain --model 2 --prompt "hello" --json
+  ai-menu --chat simple   --model 2 --prompt "hello"
+  ai-menu --chat langchain --model 2      # interactive
+
+Exit codes: 0 ok, 1 error, 2 not found.
+"""
+
+import argparse
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# --------------------------------------------------------------------------- #
+# Environment / paths (override for local testing without sudo)
+# --------------------------------------------------------------------------- #
+MODELS_DIR = Path(os.environ.get("AI_MODELS_DIR", "/usr/share/models"))
+LLAMA_CHAT = Path(os.environ.get("AI_LANGCHAIN_CHAT", "/usr/bin/langchain-chat"))
+YOKTO_CHAT = Path(os.environ.get("AI_YOKTO_CHAT", "/usr/bin/yokto-chat"))
+LLAMA_SERVER = os.environ.get("AI_LLAMA_SERVER", "")  # empty -> auto-detect
+SERVER_HOST = os.environ.get("LLAMA_HOST", "127.0.0.1")
+SERVER_PORT = int(os.environ.get("LLAMA_PORT", "8080"))
+MODEL_SYMLINK = "llama-model.gguf"        # stable name used by llama-server.service
+DEFAULT_MODEL_ID = 2                      # Llama-3.2-1B-Instruct
+
+# --------------------------------------------------------------------------- #
+# Model catalogue.
+# ram: "4g"  = fits & recommended on 4 GB and 8 GB boards
+#      "8g"  = needs 8 GB board (or tight/slow on 4 GB)
+# Verified Q4_K_M files on huggingface (bartowski org), sizes from HF API.
+# --------------------------------------------------------------------------- #
+MODELS = [
+    {"id": 1,  "name": "Qwen2.5-0.5B-Instruct",
+     "file": "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf",
+     "repo": "bartowski/Qwen2.5-0.5B-Instruct-GGUF",
+     "gb": 0.4, "ram": "4g", "note": "fastest - ideal smoke test"},
+    {"id": 2,  "name": "Llama-3.2-1B-Instruct",
+     "file": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+     "repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
+     "gb": 0.8, "ram": "4g", "note": "recommended default"},
+    {"id": 3,  "name": "Qwen2.5-1.5B-Instruct",
+     "file": "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
+     "repo": "bartowski/Qwen2.5-1.5B-Instruct-GGUF",
+     "gb": 1.0, "ram": "4g", "note": "good balance"},
+    {"id": 4,  "name": "SmolLM2-1.7B-Instruct",
+     "file": "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+     "repo": "bartowski/SmolLM2-1.7B-Instruct-GGUF",
+     "gb": 1.1, "ram": "4g", "note": "general purpose small"},
+    {"id": 5,  "name": "Gemma-2-2b-it",
+     "file": "gemma-2-2b-it-Q4_K_M.gguf",
+     "repo": "bartowski/gemma-2-2b-it-GGUF",
+     "gb": 1.7, "ram": "4g", "note": "biggest that still feels ok on 4 GB"},
+    {"id": 6,  "name": "Qwen2.5-3B-Instruct",
+     "file": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+     "repo": "bartowski/Qwen2.5-3B-Instruct-GGUF",
+     "gb": 1.9, "ram": "8g", "note": "usable on 4 GB but slow; fine on 8 GB"},
+    {"id": 7,  "name": "Llama-3.2-3B-Instruct",
+     "file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+     "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+     "gb": 2.0, "ram": "8g", "note": "best quality on 4 GB, slow-ish"},
+    {"id": 8,  "name": "Phi-3.5-mini-instruct",
+     "file": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+     "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
+     "gb": 2.4, "ram": "8g", "note": "3.8B model - needs 8 GB, slow"},
+    {"id": 9,  "name": "Mistral-7B-Instruct-v0.3",
+     "file": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+     "repo": "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
+     "gb": 4.4, "ram": "8g", "note": "7B - 8 GB only, slow on CPU"},
+    {"id": 10, "name": "Qwen2.5-7B-Instruct",
+     "file": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+     "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+     "gb": 4.7, "ram": "8g", "note": "7B - 8 GB only, slow on CPU"},
+]
+
+
+# --------------------------------------------------------------------------- #
+# System helpers
+# --------------------------------------------------------------------------- #
+def get_ram_gb():
+    """Total RAM in GB, rounded to .1."""
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemTotal:"):
+                return round(int(line.split()[1]) / 1024 / 1024, 1)
+    except Exception:
+        pass
+    return 4.0
+
+
+def ram_tier(ram_gb):
+    return "8g" if ram_gb >= 6.0 else "4g"
+
+
+def local_ip():
+    try:
+        out = subprocess.run(["ip", "-4", "addr", "show"], capture_output=True,
+                             text=True, timeout=3).stdout
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("inet ") and "127." not in line:
+                return line.split()[1].split("/")[0]
+    except Exception:
+        pass
+    return "unknown"
+
+
+def server_reachable(host=SERVER_HOST, port=SERVER_PORT, timeout=1.5):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def find_model(pattern):
+    """First model file in MODELS_DIR matching a name fragment or file name."""
+    for m in MODELS:
+        if m["file"].lower() == pattern.lower():
+            p = MODELS_DIR / m["file"]
+            if p.exists():
+                return p
+    for f in sorted(MODELS_DIR.glob("*.gguf")):
+        if pattern.lower() in f.name.lower():
+            return f
+    return None
+
+
+def resolve_model(ref):
+    """ref: catalogue id (int or decimal string), name fragment, or path."""
+    if ref is None:
+        sym = MODELS_DIR / MODEL_SYMLINK
+        return sym if sym.exists() else None
+    if str(ref).isdigit():
+        mid = int(ref)
+        for m in MODELS:
+            if m["id"] == mid:
+                p = MODELS_DIR / m["file"]
+                return p if p.exists() else None
+    p = Path(ref)
+    if p.exists():
+        return p
+    p = MODELS_DIR / ref
+    if p.exists():
+        return p
+    return find_model(str(ref))
+
+
+def download_url(m):
+    """Official HF python API: hf_hub_download(repo, file, local_dir=...)."""
+    return (f"huggingface_hub://{m['repo']}/{m['file']}")
+
+
+def hf_download(repo_id, filename, local_dir):
+    """Download a model with the official huggingface_hub python API.
+    Resumes partial downloads, verifies files, handles redirects/auth.
+    Falls back to wget only if huggingface_hub is not available."""
+    local_dir = Path(local_dir)
+    local_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=str(local_dir),
+        )
+        return Path(path)
+    except ImportError:
+        # fallback: plain wget (no python API baked into the image)
+        url = (f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
+               f"?download=true")
+        dest = local_dir / filename
+        tmp = local_dir / (filename + ".part")
+        try:
+            r = subprocess.run(["wget", "-q", "--show-progress", "-O", str(tmp), url],
+                               timeout=3600)
+            if r.returncode != 0:
+                raise RuntimeError(f"wget failed rc={r.returncode}")
+            tmp.rename(dest)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return dest
+
+
+def wget_available():
+    return shutil.which("wget") is not None or shutil.which("curl") is not None
+
+
+# --------------------------------------------------------------------------- #
+# Actions (CLI + interactive)
+# --------------------------------------------------------------------------- #
+def cmd_ram():
+    ram = get_ram_gb()
+    tier = ram_tier(ram)
+    print(json.dumps({"ram_gb": ram, "tier": tier}))
+
+
+def cmd_list(ram_gb=None, verbose=False):
+    ram_gb = ram_gb or get_ram_gb()
+    tier = ram_tier(ram_gb)
+    lines = []
+    for m in MODELS:
+        p = MODELS_DIR / m["file"]
+        installed = p.exists()
+        size_gb = round(p.stat().st_size / 1e9, 2) if installed else m["gb"]
+        fits = m["ram"] == "4g" or tier == "8g"
+        lines.append({
+            "id": m["id"], "name": m["name"], "file": m["file"],
+            "size_gb": size_gb, "ram": m["ram"],
+            "fits": fits, "installed": installed,
+            "note": m["note"] if verbose else None,
+        })
+    out = {"ram_gb": ram_gb, "tier": tier, "models": lines}
+    print(json.dumps(out, indent=2 if verbose else None))
+    return out
+
+
+def cmd_download(arg_id=None, arg_name=None, force=False):
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    target = None
+    if arg_id is not None:
+        target = next((m for m in MODELS if m["id"] == int(arg_id)), None)
+        if target is None:
+            print(f"error: no catalogue id {arg_id}", file=sys.stderr)
+            return 2
+    elif arg_name:
+        hit = [m for m in MODELS
+               if arg_name.lower() in m["name"].lower()
+               or arg_name.lower() in m["file"].lower()]
+        if not hit:
+            print(f"error: no model matches '{arg_name}'", file=sys.stderr)
+            return 2
+        target = hit[0]
+    else:
+        target = MODELS[DEFAULT_MODEL_ID - 1]
+    target = dict(target)
+
+    dest = MODELS_DIR / target["file"]
+    if dest.exists() and not force:
+        print(json.dumps({"ok": True, "already_present": str(dest),
+                          "size_gb": round(dest.stat().st_size / 1e9, 2)}))
+        return 0
+
+    url = download_url(target)
+    print(f"downloading {target['name']} ({target['gb']} GB)", file=sys.stderr)
+    print(f"  {url}", file=sys.stderr)
+    start = time.time()
+    try:
+        dest = hf_download(target["repo"], target["file"], MODELS_DIR)
+        if dest != MODELS_DIR / target["file"]:
+            # huggingface_hub resolved to a cached/elsewhere path - copy over
+            if dest.exists() and dest != MODELS_DIR / target["file"]:
+                (MODELS_DIR / target["file"]).write_bytes(dest.read_bytes())
+                dest = MODELS_DIR / target["file"]
+    except Exception as e:
+        print(f"error: download failed: {e}", file=sys.stderr)
+        return 1
+
+    sym = MODELS_DIR / MODEL_SYMLINK   # stable name for llama-server.service
+    sym.unlink(missing_ok=True)
+    sym.symlink_to(dest.name)
+    print(json.dumps({"ok": True, "path": str(dest),
+                      "size_gb": round(dest.stat().st_size / 1e9, 2),
+                      "symlink": str(sym),
+                      "elapsed_s": round(time.time() - start, 1)}))
+    return 0
+
+
+def cmd_remove(pattern):
+    p = resolve_model(pattern)
+    if p is None:
+        print(f"error: no model matches '{pattern}'", file=sys.stderr)
+        return 2
+    sym = MODELS_DIR / MODEL_SYMLINK
+    if sym.exists() and sym.resolve() == p.resolve():
+        sym.unlink(missing_ok=True)
+    p.unlink(missing_ok=True)
+    print(json.dumps({"ok": True, "removed": str(p)}))
+    return 0
+
+
+def llama_server_bin():
+    if LLAMA_SERVER:
+        return LLAMA_SERVER if Path(LLAMA_SERVER).exists() else None
+    return shutil.which("llama-server")
+
+
+def cmd_server(action, model_ref=None, n_ctx=512, detach=True):
+    if action == "status":
+        up = server_reachable()
+        print(json.dumps({"running": up, "host": SERVER_HOST,
+                          "port": SERVER_PORT}))
+        return 0 if up else 1
+
+    bin_path = llama_server_bin()
+    if bin_path is None:
+        print("error: llama-server binary not found", file=sys.stderr)
+        return 1
+
+    if action == "stop":
+        for cmd in (["systemctl", "stop", "llama-server.service"],
+                    ["pkill", "-f", "llama-server"]):
+            subprocess.run(cmd, capture_output=True)
+        time.sleep(1)
+        print(json.dumps({"ok": True, "running": server_reachable()}))
+        return 0
+
+    if action == "start":
+        model = resolve_model(model_ref)
+        if model is None:
+            print("error: no usable model - download one first "
+                  "(ai-menu --download)", file=sys.stderr)
+            return 2
+        if server_reachable():
+            print(json.dumps({"ok": True, "already_running": True,
+                              "model": str(model)}))
+            return 0
+        cmd = [bin_path, "-m", str(model), "--host", SERVER_HOST,
+               "--port", str(SERVER_PORT), "-c", str(n_ctx)]
+        log = Path("/tmp/llama-server.log")
+        print(f"starting llama-server: {' '.join(cmd)}", file=sys.stderr)
+        if not detach:
+            return subprocess.run(cmd).returncode
+        with log.open("a") as lf:
+            subprocess.Popen(cmd, stdout=lf, stderr=lf, start_new_session=True)
+        for _ in range(int(os.environ.get("AI_WAIT_SERVER", "20"))):
+            if server_reachable():
+                break
+            time.sleep(1)
+        up = server_reachable()
+        print(json.dumps({"ok": up, "running": up, "model": str(model),
+                          "log": str(log)}))
+        return 0 if up else 1
+
+    print(f"error: unknown server action {action}", file=sys.stderr)
+    return 1
+
+
+def run_chat(kind, model_ref, prompt=None, json_out=False, max_tokens=256,
+             temperature=0.7):
+    model = resolve_model(model_ref)
+    if model is None:
+        print("error: model not found - run 'ai-menu --download' first",
+              file=sys.stderr)
+        return 2
+    if kind == "langchain":
+        script = LLAMA_CHAT
+        if not script.exists():
+            print(f"error: {script} not installed (bake python3-langchain "
+                  f"into the image)", file=sys.stderr)
+            return 1
+        argv = [sys.executable, str(script), "-m", model.name]
+        if prompt:
+            argv += ["-P", prompt]
+        argv += ["-n", str(max_tokens), "-t", str(temperature)]
+        if json_out:
+            argv.append("--json")
+    elif kind == "simple":
+        script = YOKTO_CHAT
+        if not script.exists():
+            print(f"error: {script} not installed", file=sys.stderr)
+            return 1
+        argv = [sys.executable, str(script), "--text", "--model", str(model)]
+        if prompt:
+            argv += ["--prompt", prompt]
+        argv += [f"--max-tokens={max_tokens}", f"--temperature={temperature}"]
+        if json_out:
+            argv.append("--json")
+    else:
+        print(f"error: unknown chat kind '{kind}'", file=sys.stderr)
+        return 1
+
+    r = subprocess.run(argv)
+    return r.returncode
+
+
+# --------------------------------------------------------------------------- #
+# Interactive TUI (used when no CLI subcommand is given)
+# --------------------------------------------------------------------------- #
+def interactive():
+    ram = get_ram_gb()
+    tier = ram_tier(ram)
+    print("=" * 60)
+    print("  Yokto AI Menu")
+    print(f"  RAM: {ram} GB ({tier} tier)  IP: {local_ip()}")
+    print("=" * 60)
+    while True:
+        print(f"\n{'=' * 60}")
+        print("  AI Menu")
+        print("=" * 60)
+        print("  1) Download model")
+        print("  2) List models")
+        print("  3) Start llama-server")
+        print("  4) Stop llama-server")
+        print("  5) Chat (langchain)")
+        print("  6) Chat (simple llama-cli)")
+        print("  7) Diagnostics")
+        print("  0) Exit")
+        try:
+            choice = input("Select option: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+
+        ram = get_ram_gb()
+        tier = ram_tier(ram)
+
+        if choice == "1":
+            print(f"\nAvailable models (RAM tier: {tier}):")
+            for m in MODELS:
+                fits = m["ram"] == "4g" or tier == "8g"
+                mark = " *" if m["id"] == DEFAULT_MODEL_ID else ""
+                flag = "" if fits else " (needs 8 GB)"
+                print(f"  {m['id']:2d}) {m['name']:<24s} {m['gb']:.1f} GB  {m['note']}{flag}{mark}")
+            sel = input("Model number [default 2]: ").strip()
+            cmd_download(arg_id=sel if sel else str(DEFAULT_MODEL_ID))
+        elif choice == "2":
+            cmd_list(ram_gb=ram, verbose=True)
+        elif choice == "3":
+            cmd_server("start", model_ref=input("Model id [default 2]: ").strip() or "2")
+        elif choice == "4":
+            cmd_server("stop")
+        elif choice == "5":
+            run_chat("langchain", input("Model id [default 2]: ").strip() or "2")
+        elif choice == "6":
+            run_chat("simple", input("Model id [default 2]: ").strip() or "2")
+        elif choice == "7":
+            diagnostics()
+        elif choice == "0":
+            print("Goodbye!")
+            break
+        else:
+            print("Invalid option")
+
+
+def diagnostics():
+    print("\n-- Diagnostics --")
+    ram = get_ram_gb()
+    print(f"RAM: {ram:.1f} GB  (tier: {ram_tier(ram)})")
+    print(f"Models dir: {MODELS_DIR}  exists={MODELS_DIR.exists()}")
+    if MODELS_DIR.exists():
+        for f in sorted(MODELS_DIR.glob("*.gguf")):
+            print(f"  {f.name}  {f.stat().st_size/1e9:.2f} GB")
+    print(f"llama-server: {llama_server_bin() or 'NOT FOUND'}")
+    print(f"server on :{SERVER_PORT}: {'UP' if server_reachable() else 'down'}")
+    print(f"langchain-chat: {LLAMA_CHAT}  exists={LLAMA_CHAT.exists()}")
+    print(f"yokto-chat:     {YOKTO_CHAT}  exists={YOKTO_CHAT.exists()}")
+    try:
+        import langchain  # noqa: F401
+        print("langchain (python import): OK")
+    except ImportError:
+        print("langchain (python import): NOT AVAILABLE")
+
+
+# --------------------------------------------------------------------------- #
+# CLI entry point
+# --------------------------------------------------------------------------- #
+def main():
+    ap = argparse.ArgumentParser(description="Yokto AI menu (models, server, chat)")
+    sub = ap.add_subparsers(dest="cmd")
+
+    p = sub.add_parser("ram", help="print detected RAM / tier")
+    p = sub.add_parser("list", help="list model catalogue")
+    p.add_argument("--verbose", action="store_true")
+    p.add_argument("--ram-gb", type=float, default=None)
+
+    p = sub.add_parser("download", help="download a model")
+    p.add_argument("--id", type=int, default=None)
+    p.add_argument("--name", default=None)
+    p.add_argument("--force", action="store_true")
+    p.add_argument("query", nargs="?", default=None,
+                   help="model id or name fragment")
+
+    p = sub.add_parser("remove", help="remove a downloaded model")
+    p.add_argument("model", nargs="?", default=None)
+
+    p = sub.add_parser("server", help="control llama-server")
+    p.add_argument("action", choices=["start", "stop", "status"])
+    p.add_argument("--model", default=None)
+    p.add_argument("--n-ctx", type=int, default=512)
+
+    p = sub.add_parser("chat", help="run a chat")
+    p.add_argument("kind", choices=["langchain", "simple"])
+    p.add_argument("--model", default=None)
+    p.add_argument("-P", "--prompt", default=None)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("-n", "--max-tokens", type=int, default=256)
+    p.add_argument("-t", "--temperature", type=float, default=0.7)
+
+    args = ap.parse_args()
+
+    if args.cmd is None:
+        interactive()
+        return 0
+    elif args.cmd == "ram":
+        return cmd_ram()
+    elif args.cmd == "list":
+        return cmd_list(ram_gb=args.ram_gb, verbose=args.verbose)
+    elif args.cmd == "download":
+        q = args.query
+        if q is not None and q.isdigit() and args.id is None and args.name is None:
+            args.id = int(q)
+        return cmd_download(arg_id=args.id, arg_name=args.name, force=args.force)
+    elif args.cmd == "remove":
+        return cmd_remove(args.model)
+    elif args.cmd == "server":
+        return cmd_server(args.action, model_ref=args.model, n_ctx=args.n_ctx)
+    elif args.cmd == "chat":
+        return run_chat(args.kind, args.model, prompt=args.prompt,
+                        json_out=args.json, max_tokens=args.max_tokens,
+                        temperature=args.temperature)
+    ap.print_help()
+    return 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

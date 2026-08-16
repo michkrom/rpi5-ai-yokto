@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""
+yokto langchain-chat
+====================
+A small, dependency-light chat client that talks to a llama.cpp-compatible
+OpenAI endpoint (llama-server or llama-cpp-python). It uses langchain for the
+agent/model wrapper but degrades gracefully to plain httpx if langchain is not
+baked into the image (so a closed Yocto build still works).
+
+Supports BOTH interactive use AND fully non-interactive/programmatic use:
+
+  # one-shot answer (machine friendly):
+  langchain-chat -m model.gguf -P "What is 2+2?" --json
+
+  # short answer, plain text stdout (easy to grep / parse):
+  langchain-chat -P "Tell me a haiku" -n 80
+
+  # start a server of your choice, then chat once:
+  langchain-chat --auto-server -m model.gguf -P "hi" --json
+
+  # interactive session (default when no -P given):
+  langchain-chat -m model.gguf
+
+Exit codes:
+  0  success
+  1  server not reachable / usage error
+  2  missing langchain in non-auto mode
+"""
+
+import argparse
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+DEFAULT_HOST = os.environ.get("LLAMA_HOST", "127.0.0.1")
+DEFAULT_PORT = int(os.environ.get("LLAMA_PORT", "8080"))
+
+
+# --------------------------------------------------------------------------- #
+# Networking helpers
+# --------------------------------------------------------------------------- #
+def server_reachable(host, port, timeout=2.0):
+    """Return True if an HTTP server is listening on host:port."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def wait_for_server(host, port, tries=30, delay=1.0):
+    for _ in range(tries):
+        if server_reachable(host, port):
+            return True
+        time.sleep(delay)
+    return False
+
+
+# --------------------------------------------------------------------------- #
+# Backend (server) helpers - used by --auto-server
+# --------------------------------------------------------------------------- #
+def find_bin(name):
+    for p in os.environ.get("PATH", "").split(":"):
+        cand = Path(p) / name
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return None
+
+
+def start_auto_server(model_path, host, port, n_ctx=None):
+    """Attempt to start a llama.cpp server. Returns (pid, cmd) or (None, reason)."""
+    model_path = str(Path(model_path).resolve())
+    if not Path(model_path).exists():
+        return None, f"model file not found: {model_path}"
+
+    # 1) real llama.cpp server binary (Yocto image / system)
+    bin_path = find_bin("llama-server")
+    if bin_path:
+        cmd = [bin_path, "-m", model_path, "--host", host, "--port", str(port)]
+        if n_ctx:
+            cmd += ["-c", str(n_ctx)]
+        cmd += ["--detach"]  # llama.cpp can daemonize itself
+        return "detached", cmd
+
+    # 2) llama-cpp-python OpenAI-compatible server (common on dev hosts)
+    try:
+        import llama_cpp.server  # noqa: F401
+        cmd = [sys.executable, "-m", "llama_cpp.server",
+               "--model", model_path, "--host", host, "--port", str(port),
+               "--n_gpu_layers", "0"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+        return ("pid", proc.pid), cmd
+    except ImportError:
+        pass
+
+    # 3) system libllama via llama-cli? not a server - skip.
+
+    return None, ("no server backend found - install llama.cpp 'llama-server' "
+                  "or 'llama-cpp-python' on this host")
+
+
+# --------------------------------------------------------------------------- #
+# Core chat functions
+# --------------------------------------------------------------------------- #
+def chat_via_langchain(host, port, model_id, prompt, system=None,
+                       max_tokens=256, temperature=0.7, timeout=600):
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_openai import ChatOpenAI
+
+    llm = ChatOpenAI(
+        model=model_id,
+        base_url=f"http://{host}:{port}/v1",
+        api_key="not-needed",  # llama.cpp does not require a key
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout,
+    )
+    msgs = []
+    if system:
+        msgs.append(SystemMessage(content=system))
+    msgs.append(HumanMessage(content=prompt))
+    resp = llm.invoke(msgs)
+    return resp.content
+
+
+def chat_via_httpx(host, port, model_id, prompt, system=None,
+                   max_tokens=256, temperature=0.7, timeout=600):
+    """Minimal fallback (no langchain needed). POST /v1/chat/completions."""
+    import httpx
+
+    body = {
+        "model": model_id,
+        "messages": [],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": False,
+    }
+    if system:
+        body["messages"].append({"role": "system", "content": system})
+    body["messages"].append({"role": "user", "content": prompt})
+
+    with httpx.Client(timeout=timeout) as client:
+        r = client.post(f"http://{host}:{port}/v1/chat/completions", json=body)
+        r.raise_for_status()
+        data = r.json()
+    return data["choices"][0]["message"]["content"]
+
+
+def chat(host, port, model_id, prompt, system=None, max_tokens=256,
+         temperature=0.7, use_langchain=True):
+    if use_langchain:
+        try:
+            return chat_via_langchain(host, port, model_id, prompt, system,
+                                      max_tokens, temperature)
+        except ImportError:
+            if not use_langchain:  # already tried fallback
+                raise
+            # fall through to httpx below
+    return chat_via_httpx(host, port, model_id, prompt, system,
+                          max_tokens, temperature)
+
+
+# --------------------------------------------------------------------------- #
+# Interactive REPL
+# --------------------------------------------------------------------------- #
+def interactive(host, port, model_id, max_tokens, temperature):
+    print(f"langchain-chat  (model={model_id}, server={host}:{port})")
+    print("Type your message. 'quit'/'exit' to leave.")
+    try:
+        while True:
+            try:
+                prompt = input("> ")
+            except (EOFError, KeyboardInterrupt):
+                break
+            prompt = prompt.strip()
+            if not prompt or prompt.lower() in ("quit", "exit", "q"):
+                break
+            print("…")
+            try:
+                print(chat(host, port, model_id, prompt,
+                           max_tokens=max_tokens, temperature=temperature))
+            except Exception as e:
+                print(f"[error] {e}", file=sys.stderr)
+    except KeyboardInterrupt:
+        pass
+
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+def main():
+    ap = argparse.ArgumentParser(
+        description="langchain chat against a llama.cpp OpenAI endpoint",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    ap.add_argument("-m", "--model", default=None, help="model id/file name")
+    ap.add_argument("-H", "--host", default=DEFAULT_HOST)
+    ap.add_argument("-p", "--port", type=int, default=DEFAULT_PORT)
+    ap.add_argument("-S", "--system", default=None, help="system prompt")
+    ap.add_argument("-P", "--prompt", default=None,
+                    help="single-shot prompt (non-interactive if set)")
+    ap.add_argument("-n", "--max-tokens", type=int, default=256)
+    ap.add_argument("-t", "--temperature", type=float, default=0.7)
+    ap.add_argument("--json", action="store_true",
+                    help="emit a JSON record on stdout (programmatic use)")
+    ap.add_argument("--no-langchain", action="store_true",
+                    help="force the plain-httpx path (no langchain needed)")
+    ap.add_argument("--auto-server", action="store_true",
+                    help="start a local llama.cpp server if none is listening")
+    ap.add_argument("--wait", type=int, default=30,
+                    help="seconds to wait for server to come up")
+    ap.add_argument("--n-ctx", type=int, default=None, help="context length")
+    args = ap.parse_args()
+
+    model_id = args.model or "local"
+    if args.auto_server and not server_reachable(args.host, args.port):
+        kind, val = start_auto_server(args.model, args.host, args.port, args.n_ctx)
+        if val is None:
+            print(f"auto-server: {kind}", file=sys.stderr)
+            return 1
+        print(f"auto-server: started ({kind})", file=sys.stderr)
+        if not wait_for_server(args.host, args.port, tries=args.wait):
+            print("auto-server: startup timeout", file=sys.stderr)
+            return 1
+
+    if not server_reachable(args.host, args.port):
+        print(f"error: no server at {args.host}:{args.port} "
+              "(start llama-server, then retry, or pass --auto-server)",
+              file=sys.stderr)
+        return 1
+
+    use_langchain = not args.no_langchain
+
+    if args.prompt is not None:
+        try:
+            answer = chat(args.host, args.port, model_id, args.prompt,
+                          system=args.system, max_tokens=args.max_tokens,
+                          temperature=args.temperature, use_langchain=use_langchain)
+        except Exception as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps({
+                "ok": True,
+                "model": model_id,
+                "host": args.host,
+                "port": args.port,
+                "prompt": args.prompt,
+                "system": args.system,
+                "max_tokens": args.max_tokens,
+                "temperature": args.temperature,
+                "response": str(answer),
+            }, ensure_ascii=False))
+        else:
+            print(str(answer))
+        return 0
+
+    # no prompt -> interactive
+    interactive(args.host, args.port, model_id, args.max_tokens, args.temperature)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

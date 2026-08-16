@@ -1,0 +1,25 @@
+[Unit]
+Description=Yokto AI Menu - models & chat launcher
+After=weston.service
+Wants=weston.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Wait for the Wayland socket like the games launcher does
+ExecStartPre=/bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do \
+  if [ -S /run/user/1000/wayland-1 ]; then exit 0; fi; \
+  sleep 1; \
+done'
+
+ExecStart=/usr/bin/weston-terminal --shell=/usr/bin/ai-menu
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-1
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

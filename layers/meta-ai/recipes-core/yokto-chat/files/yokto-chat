@@ -2,6 +2,12 @@
 """
 Yokto Chat - Lightweight chat application for Raspberry Pi 5 AI image.
 Supports text-only and voice modes. Models must be pre-installed at /usr/share/models/
+
+Programmatic (non-interactive) use:
+
+  yokto-chat --text -P "hello"                      # one-shot answer
+  yokto-chat --text -P "hello" --json               # JSON record on stdout
+  yokto-chat --text -P "hello" -n 128 -t 0.3        # max tokens / temperature
 """
 
 import os
@@ -13,12 +19,13 @@ import argparse
 from pathlib import Path
 
 # Models directory
-MODELS_DIR = Path("/usr/share/models")
-LLAMA_CLI = "/usr/bin/llama-cli"
+MODELS_DIR = Path(os.environ.get("AI_MODELS_DIR", "/usr/share/models"))
+LLAMA_CLI = os.environ.get("AI_LLAMA_CLI", "/usr/bin/llama-cli")
 WHISPER_CLI = "/usr/bin/whisper-cli"
 
-# Default models
-DEFAULT_LLAMA = "tinyllama-1.1b-openorca.Q4_K_M.gguf"
+# Default model (updated: TheBloke TinyLlama is archived/gated on HF,
+# so we default to the curated Llama-3.2-1B Q4_K_M from bartowski)
+DEFAULT_LLAMA = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 DEFAULT_WHISPER = "ggml-base.bin"
 
 def get_memory_gb():
@@ -69,16 +76,17 @@ def transcribe(audio_path, model_path):
         shutil.rmtree(out_dir, ignore_errors=True)
     return None
 
-def generate(prompt, model_path):
+def generate(prompt, model_path, max_tokens=256, temperature=0.7):
     """Generate response using llama-cli."""
     try:
-        r = subprocess.run([LLAMA_CLI, "-m", str(model_path), "-p", prompt, "-n", "256", "--temp", "0.7"],
+        r = subprocess.run([LLAMA_CLI, "-m", str(model_path), "-p", prompt,
+                          "-n", str(max_tokens), "--temp", str(temperature)],
                         capture_output=True, text=True, timeout=180)
         return r.stdout.strip()
     except Exception as e:
         return f"Error: {e}"
 
-def text_chat(model_path):
+def text_chat(model_path, max_tokens=256, temperature=0.7):
     """Text-only chat interface."""
     print("Yokto Chat (text mode). Ctrl+C or 'quit' to exit.")
     print(f"Model: {model_path.name}")
@@ -92,10 +100,10 @@ def text_chat(model_path):
         if not prompt.strip():
             continue
         print("Thinking...", file=sys.stderr)
-        response = generate(prompt, model_path)
+        response = generate(prompt, model_path, max_tokens, temperature)
         print(f"\n{response}")
 
-def voice_chat(model_path, whisper_path):
+def voice_chat(model_path, whisper_path, max_tokens=256, temperature=0.7):
     """Voice + text chat interface."""
     print("Yokto Chat (voice mode). Ctrl+C or 'quit' to exit.")
     print(f"LLM Model: {model_path.name}")
@@ -126,12 +134,16 @@ def voice_chat(model_path, whisper_path):
             continue
 
         print("Thinking...", file=sys.stderr)
-        response = generate(prompt, model_path)
+        response = generate(prompt, model_path, max_tokens, temperature)
         print(f"\nAI: {response}")
 
 def main():
     parser = argparse.ArgumentParser(description="Yokto Chat - AI chat for RPi5")
     parser.add_argument("--text", action="store_true", help="Text-only mode")
+    parser.add_argument("-P", "--prompt", help="Single-shot prompt (non-interactive)")
+    parser.add_argument("--json", action="store_true", help="Emit JSON record on stdout")
+    parser.add_argument("-n", "--max-tokens", type=int, default=256, help="Max tokens")
+    parser.add_argument("-t", "--temperature", type=float, default=0.7)
     parser.add_argument("--voice", action="store_true", help="Voice mode (default if audio available)")
     parser.add_argument("--model", help="Model file (default: auto-detect)")
     parser.add_argument("--whisper", help="Whisper model file (default: auto-detect)")
@@ -139,25 +151,39 @@ def main():
 
     # Ensure models directory exists
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     # Find models
     llama_model = Path(args.model) if args.model else find_model("*.gguf")
     if not llama_model:
         # Try default location
         llama_model = MODELS_DIR / DEFAULT_LLAMA
         print(f"Note: Place a GGUF model at {llama_model}", file=sys.stderr)
-    
+
     whisper_model = Path(args.whisper) if args.whisper else find_model("ggml-*.bin")
     has_audio = check_audio()
-    
+
+    # Single-shot programmatic mode: answer and exit, no human interaction
+    if args.prompt:
+        import json as _json
+        response = generate(args.prompt, llama_model, args.max_tokens, args.temperature)
+        if args.json:
+            print(_json.dumps({"ok": True, "model": str(llama_model),
+                               "prompt": args.prompt,
+                               "max_tokens": args.max_tokens,
+                               "temperature": args.temperature,
+                               "response": response}, ensure_ascii=False))
+        else:
+            print(response)
+        return
+
     if args.voice or (not args.text and has_audio):
         if whisper_model:
-            voice_chat(llama_model, whisper_model)
+            voice_chat(llama_model, whisper_model, args.max_tokens, args.temperature)
         else:
             print("No whisper model found. Use --model for LLM, --whisper for STT", file=sys.stderr)
-            text_chat(llama_model)
+            text_chat(llama_model, args.max_tokens, args.temperature)
     else:
-        text_chat(llama_model)
+        text_chat(llama_model, args.max_tokens, args.temperature)
 
 if __name__ == "__main__":
     main()
