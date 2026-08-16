@@ -99,6 +99,10 @@ MODELS = [
      "gb": 4.7, "ram": "8g", "note": "7B - 8 GB only, slow on CPU"},
 ]
 
+# Model param counts shown in the table (id -> params)
+PARAMS = {1: "0.5B", 2: "1.2B", 3: "1.5B", 4: "1.7B", 5: "2.6B",
+          6: "3.0B", 7: "3.2B", 8: "3.8B", 9: "7.2B", 10: "7.6B"}
+
 
 # --------------------------------------------------------------------------- #
 # System helpers
@@ -172,6 +176,28 @@ def resolve_model(ref):
     return find_model(str(ref))
 
 
+def first_installed_model():
+    """Best model to use when none was selected: the stable symlink (i.e. the
+    last downloaded model), else the first installed catalogue entry."""
+    sym = MODELS_DIR / MODEL_SYMLINK
+    if sym.exists():
+        return sym
+    for m in MODELS:
+        p = MODELS_DIR / m["file"]
+        if p.exists():
+            return p
+    return None
+
+
+def installed_models_pretty():
+    """Human list of downloaded catalogue models (id: name), e.g. '1: Qwen2.5-0.5B'."""
+    parts = []
+    for m in MODELS:
+        if (MODELS_DIR / m["file"]).exists():
+            parts.append(f"{m['id']}: {m['name']}")
+    return ", ".join(parts) if parts else "(none yet)"
+
+
 def download_url(m):
     """Official HF python API: hf_hub_download(repo, file, local_dir=...)."""
     return (f"huggingface_hub://{m['repo']}/{m['file']}")
@@ -221,8 +247,48 @@ def cmd_ram():
     print(json.dumps({"ram_gb": ram, "tier": tier}))
 
 
-def cmd_list(ram_gb=None, verbose=False):
+def model_table(ram_gb=None, notes=False):
+    """Column-based human listing: ID, Model, Params, Size, RAM, Install, Notes."""
     ram_gb = ram_gb or get_ram_gb()
+    tier = ram_tier(ram_gb)
+    rows = []
+    for m in MODELS:
+        p = MODELS_DIR / m["file"]
+        inst = p.exists()
+        size = round(p.stat().st_size / 1e9, 1) if inst else m["gb"]
+        fits = m["ram"] == "4g" or tier == "8g"
+        rows.append({"id": m["id"], "name": m["name"],
+                     "params": PARAMS.get(m["id"], ""),
+                     "size": size, "ram": m["ram"], "fits": fits, "inst": inst,
+                     "def": m["id"] == DEFAULT_MODEL_ID,
+                     "note": m["note"] if notes else ""})
+    w_name = max(len(r["name"]) for r in rows)
+    w_par = max(max(len(r["params"]) for r in rows), 6)
+    w_ram = max(len(r["ram"]) for r in rows)
+    w_note = max(len(r["note"]) for r in rows) if notes else 0
+    hdr = (f"{'':4}{'Model':<{w_name}}  {'Params':>{w_par}}  {'Size':>5}"
+           f"  {'RAM':>{w_ram}}  {'Install':>7}")
+    if notes:
+        hdr += "  Notes"
+    out = [f"RAM: {ram_gb:.1f} GB  (tier {tier})", "", hdr, "-" * len(hdr)]
+    for r in rows:
+        star = "*" if r["def"] else " "
+        fit = "" if r["fits"] else " !"
+        line = (f"{r['id']:>2}{star}  {r['name']:<{w_name}}  "
+                f"{r['params']:>{w_par}}  {r['size']:>4.1f}G  "
+                f"{r['ram']}{fit:<4}  {'yes' if r['inst'] else 'no':>7}")
+        if notes:
+            line += f"  {r['note']}"
+        out.append(line)
+    out += ["", "* default model    ! too big for this board's RAM tier"]
+    return "\n".join(out)
+
+
+def cmd_list(ram_gb=None, verbose=False, as_json=False):
+    ram_gb = ram_gb or get_ram_gb()
+    if not as_json:
+        print(model_table(ram_gb, notes=verbose))
+        return 0
     tier = ram_tier(ram_gb)
     lines = []
     for m in MODELS:
@@ -231,8 +297,8 @@ def cmd_list(ram_gb=None, verbose=False):
         size_gb = round(p.stat().st_size / 1e9, 2) if installed else m["gb"]
         fits = m["ram"] == "4g" or tier == "8g"
         lines.append({
-            "id": m["id"], "name": m["name"], "file": m["file"],
-            "size_gb": size_gb, "ram": m["ram"],
+            "id": m["id"], "name": m["name"], "params": PARAMS.get(m["id"], ""),
+            "file": m["file"], "size_gb": size_gb, "ram": m["ram"],
             "fits": fits, "installed": installed,
             "note": m["note"] if verbose else None,
         })
@@ -365,10 +431,12 @@ def cmd_server(action, model_ref=None, n_ctx=512, detach=True, threads=None):
         return 0 if not server_reachable() else 1
 
     if action == "start":
-        model = resolve_model(model_ref)
+        model = resolve_model(model_ref) or first_installed_model()
         if model is None:
-            print("error: no usable model - download one first "
-                  "(ai-menu --download)", file=sys.stderr)
+            print(f"error: no model installed (requested '{model_ref}'). "
+                  f"Installed: {installed_models_pretty()}", file=sys.stderr)
+            print("hint: ai-menu --download <id>  (e.g. 1 = Qwen2.5-0.5B, "
+                  "small and fast)", file=sys.stderr)
             return 2
         if server_reachable():
             print(json.dumps({"ok": True, "already_running": True,
@@ -384,7 +452,7 @@ def cmd_server(action, model_ref=None, n_ctx=512, detach=True, threads=None):
             return subprocess.run(cmd).returncode
         with log.open("a") as lf:
             subprocess.Popen(cmd, stdout=lf, stderr=lf, start_new_session=True)
-        for _ in range(int(os.environ.get("AI_WAIT_SERVER", "20"))):
+        for _ in range(int(os.environ.get("AI_WAIT_SERVER", "60"))):
             if server_reachable():
                 break
             time.sleep(1)
@@ -397,12 +465,14 @@ def cmd_server(action, model_ref=None, n_ctx=512, detach=True, threads=None):
     return 1
 
 
-def run_chat(kind, model_ref, prompt=None, json_out=False, max_tokens=256,
+def run_chat(kind, model_ref=None, prompt=None, json_out=False, max_tokens=256,
              temperature=0.7):
     model = resolve_model(model_ref)
     if model is None:
-        print("error: model not found - run 'ai-menu --download' first",
-              file=sys.stderr)
+        model = first_installed_model()
+    if model is None:
+        print("error: no model installed - run 'ai-menu --download' first "
+              "(see 'ai-menu list' for the catalogue)", file=sys.stderr)
         return 2
     if kind == "langchain":
         script = LLAMA_CHAT
@@ -410,6 +480,13 @@ def run_chat(kind, model_ref, prompt=None, json_out=False, max_tokens=256,
             print(f"error: {script} not installed (bake python3-langchain "
                   f"into the image)", file=sys.stderr)
             return 1
+        # langchain chat talks to llama-server: auto-start it when needed
+        if not server_reachable():
+            print("starting llama-server...", file=sys.stderr)
+            rc = cmd_server("start", model_ref=model)
+            if rc != 0:
+                print("error: could not start llama-server", file=sys.stderr)
+                return 1
         argv = [sys.executable, str(script), "-m", model.name]
         if prompt:
             argv += ["-P", prompt]
@@ -466,24 +543,25 @@ def interactive():
         tier = ram_tier(ram)
 
         if choice == "1":
-            print(f"\nAvailable models (RAM tier: {tier}):")
-            for m in MODELS:
-                fits = m["ram"] == "4g" or tier == "8g"
-                mark = " *" if m["id"] == DEFAULT_MODEL_ID else ""
-                flag = "" if fits else " (needs 8 GB)"
-                print(f"  {m['id']:2d}) {m['name']:<24s} {m['gb']:.1f} GB  {m['note']}{flag}{mark}")
-            sel = input("Model number [default 2]: ").strip()
-            cmd_download(arg_id=sel if sel else str(DEFAULT_MODEL_ID))
+            print("\nAvailable models:")
+            print(model_table(ram, notes=True))
+            sel = input(f"Model number [Enter=default {DEFAULT_MODEL_ID}]: ").strip()
+            if sel.isdigit():
+                cmd_download(arg_id=int(sel))
+            elif sel:
+                cmd_download(arg_name=sel)
+            else:
+                cmd_download(arg_id=DEFAULT_MODEL_ID)
         elif choice == "2":
             cmd_list(ram_gb=ram, verbose=True)
         elif choice == "3":
-            cmd_server("start", model_ref=input("Model id [default 2]: ").strip() or "2")
+            cmd_server("start", model_ref=input("Model id [Enter=auto]: ").strip() or None)
         elif choice == "4":
             cmd_server("stop")
         elif choice == "5":
-            run_chat("langchain", input("Model id [default 2]: ").strip() or "2")
+            run_chat("langchain", input("Model id [Enter=auto]: ").strip() or None)
         elif choice == "6":
-            run_chat("simple", input("Model id [default 2]: ").strip() or "2")
+            run_chat("simple", input("Model id [Enter=auto]: ").strip() or None)
         elif choice == "7":
             diagnostics()
         elif choice == "0":
@@ -526,7 +604,8 @@ def main():
 
     p = sub.add_parser("ram", help="print detected RAM / tier")
     p = sub.add_parser("list", help="list model catalogue")
-    p.add_argument("--verbose", action="store_true")
+    p.add_argument("--verbose", action="store_true", help="include notes column")
+    p.add_argument("--json", action="store_true", help="machine-readable JSON")
     p.add_argument("--ram-gb", type=float, default=None)
 
     p = sub.add_parser("download", help="download a model")
@@ -566,7 +645,7 @@ def main():
     elif args.cmd == "ram":
         return cmd_ram()
     elif args.cmd == "list":
-        return cmd_list(ram_gb=args.ram_gb, verbose=args.verbose)
+        return cmd_list(ram_gb=args.ram_gb, verbose=args.verbose, as_json=args.json)
     elif args.cmd == "download":
         q = args.query
         if q is not None and q.isdigit() and args.id is None and args.name is None:
