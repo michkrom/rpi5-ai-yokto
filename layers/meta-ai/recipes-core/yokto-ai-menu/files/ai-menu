@@ -203,6 +203,27 @@ def download_url(m):
     return (f"huggingface_hub://{m['repo']}/{m['file']}")
 
 
+def installed_ids():
+    """Comma list of installed catalogue ids, e.g. '1' or '1,3'."""
+    ids = [str(m["id"]) for m in MODELS if (MODELS_DIR / m["file"]).exists()]
+    return ", ".join(ids) if ids else "none"
+
+
+def running_model():
+    """Model path currently loaded by llama-server, or None. Reads the
+    -m argument from the process cmdline (no state files)."""
+    for pid in _llama_pids():
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                args = f.read().split(b"\0")
+            for i, a in enumerate(args):
+                if a == b"-m" and i + 1 < len(args):
+                    return Path(args[i + 1].decode())
+        except Exception:
+            continue
+    return None
+
+
 def hf_download(repo_id, filename, local_dir):
     """Download a model with the official huggingface_hub python API.
     Resumes partial downloads, verifies files, handles redirects/auth.
@@ -431,17 +452,29 @@ def cmd_server(action, model_ref=None, n_ctx=512, detach=True, threads=None):
         return 0 if not server_reachable() else 1
 
     if action == "start":
-        model = resolve_model(model_ref) or first_installed_model()
+        explicit = model_ref is not None and str(model_ref).strip() != ""
+        # explicit id/name -> strict; Enter (None) -> installed/auto model
+        model = resolve_model(model_ref) if explicit else first_installed_model()
         if model is None:
-            print(f"error: no model installed (requested '{model_ref}'). "
-                  f"Installed: {installed_models_pretty()}", file=sys.stderr)
-            print("hint: ai-menu --download <id>  (e.g. 1 = Qwen2.5-0.5B, "
+            if explicit:
+                print(f"error: model '{model_ref}' is not installed. "
+                      f"Installed: {installed_models_pretty()}", file=sys.stderr)
+            else:
+                print("error: no model installed.", file=sys.stderr)
+            print("hint: ai-menu download <id>  (e.g. 1 = Qwen2.5-0.5B, "
                   "small and fast)", file=sys.stderr)
             return 2
         if server_reachable():
-            print(json.dumps({"ok": True, "already_running": True,
-                              "model": str(model)}))
-            return 0
+            cur = running_model()
+            if explicit and cur is not None and \
+                    Path(cur).resolve() != Path(model).resolve():
+                print(f"server runs {Path(cur).name}; restarting with "
+                      f"{Path(model).name}...", file=sys.stderr)
+                cmd_server("stop")
+            else:
+                print(json.dumps({"ok": True, "already_running": True,
+                                  "model": str(model)}))
+                return 0
         cmd = [bin_path, "-m", str(model), "--host", SERVER_HOST,
                "--port", str(SERVER_PORT), "-c", str(n_ctx),
                "-t", str(default_threads() if threads is None else threads),
@@ -467,12 +500,15 @@ def cmd_server(action, model_ref=None, n_ctx=512, detach=True, threads=None):
 
 def run_chat(kind, model_ref=None, prompt=None, json_out=False, max_tokens=256,
              temperature=0.7):
-    model = resolve_model(model_ref)
+    explicit = model_ref is not None and str(model_ref).strip() != ""
+    model = resolve_model(model_ref) if explicit else first_installed_model()
     if model is None:
-        model = first_installed_model()
-    if model is None:
-        print("error: no model installed - run 'ai-menu --download' first "
-              "(see 'ai-menu list' for the catalogue)", file=sys.stderr)
+        if explicit:
+            print(f"error: model '{model_ref}' is not installed. "
+                  f"Installed: {installed_models_pretty()}", file=sys.stderr)
+        else:
+            print("error: no model installed - run 'ai-menu download' first "
+                  "(see 'ai-menu list' for the catalogue)", file=sys.stderr)
         return 2
     if kind == "langchain":
         script = LLAMA_CHAT
@@ -480,7 +516,15 @@ def run_chat(kind, model_ref=None, prompt=None, json_out=False, max_tokens=256,
             print(f"error: {script} not installed (bake python3-langchain "
                   f"into the image)", file=sys.stderr)
             return 1
-        # langchain chat talks to llama-server: auto-start it when needed
+        # langchain chat talks to llama-server: ensure it runs the requested
+        # model, restarting it if a different one is currently loaded
+        if server_reachable():
+            cur = running_model()
+            if explicit and cur is not None and \
+                    Path(cur).resolve() != Path(model).resolve():
+                print(f"server runs {Path(cur).name}; switching to "
+                      f"{Path(model).name}...", file=sys.stderr)
+                cmd_server("stop")
         if not server_reachable():
             print("starting llama-server...", file=sys.stderr)
             rc = cmd_server("start", model_ref=model)
@@ -555,13 +599,13 @@ def interactive():
         elif choice == "2":
             cmd_list(ram_gb=ram, verbose=True)
         elif choice == "3":
-            cmd_server("start", model_ref=input("Model id [Enter=auto]: ").strip() or None)
+            cmd_server("start", model_ref=input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
         elif choice == "4":
             cmd_server("stop")
         elif choice == "5":
-            run_chat("langchain", input("Model id [Enter=auto]: ").strip() or None)
+            run_chat("langchain", input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
         elif choice == "6":
-            run_chat("simple", input("Model id [Enter=auto]: ").strip() or None)
+            run_chat("simple", input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
         elif choice == "7":
             diagnostics()
         elif choice == "0":
