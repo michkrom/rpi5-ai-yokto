@@ -777,15 +777,26 @@ def flash(ctx, device=None, base=False, gui=False, chrome=False, games=False, ai
         "sstate": "Also remove the sstate cache",
         "recipe": "Clean a specific recipe from the sstate cache (e.g. chromium-ozone-wayland)",
         "tmp_only": "Remove only build/tmp/ directory, keeping sstate-cache intact (for fresh builds without losing cache)",
-        "all": "Remove everything: build output, layers, downloads/, sstate-cache/",
+        "clean_all": "Remove everything: build output, layers, downloads/, sstate-cache/",
     }
 )
-def build_clean(ctx, layers=False, sstate=False, recipe="", tmp_only=False, all=False):
+def build_clean(ctx, layers=False, sstate=False, recipe="", tmp_only=False, clean_all=False):
     """Remove build output. Without flags, preserves downloads/, sstate-cache/, and layers."""
     lock = _read_lock()
     if _lock_alive_ctx(ctx, lock):
         raise Exit(f"{lock.get('type', 'Build').capitalize()} '{lock['level']}' is running. Stop it first with 'invoke stop-build'.")
     _clear_lock()
+
+    # --recipe cannot be combined with clean-all/sstate/layers: --recipe cleans a
+    # single recipe's sstate and needs the layer sources, while those flags
+    # remove the whole sstate cache and/or the kas-cloned layers.
+    if recipe and (clean_all or sstate or layers):
+        raise Exit(
+            "Cannot combine --recipe with --clean-all/--sstate/--layers: --recipe "
+            "cleans a single recipe from sstate (and needs layer sources), while "
+            "--clean-all/--sstate remove the whole sstate cache and --layers "
+            "removes the kas-cloned layers."
+        )
 
     build_dir = ROOT / "build"
     
@@ -803,7 +814,7 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", tmp_only=False, all=
         return
     
     if build_dir.exists():
-        if all:
+        if clean_all:
             print(f"  Removing {build_dir}/ (full clean)")
             ctx.run(f'rm -rf "{build_dir}"')
         else:
@@ -811,7 +822,7 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", tmp_only=False, all=
             for item in build_dir.iterdir():
                 if item.name not in ("downloads", "sstate-cache"):
                     ctx.run(f'rm -rf "{item}"')
-    if layers or all:
+    if layers or clean_all:
         layers_dir = ROOT / "layers"
         if layers_dir.exists():
             for item in layers_dir.iterdir():
@@ -820,20 +831,24 @@ def build_clean(ctx, layers=False, sstate=False, recipe="", tmp_only=False, all=
                     ctx.run(f'rm -rf "{item}"')
                 else:
                     print(f"  Keeping {item}/ (custom, not kas-cloned)")
-    if sstate or all:
+    if sstate or clean_all:
         sstate_dir = build_dir / "sstate-cache"
         if sstate_dir.exists():
             print(f"  Removing {sstate_dir}/")
             ctx.run(f'rm -rf "{sstate_dir}"')
     if recipe:
         if not build_dir.exists():
-            print(f"  Skipping recipe clean: build directory removed by --all")
+            print(f"  Skipping recipe clean: build directory removed by --clean-all")
         else:
             print(f"  Cleaning sstate for recipe: {recipe}")
+            # cleansstate needs the OE/kas build environment sourced; run bitbake
+            # inside a kas shell. base is fine here: cleansstate removes the recipe's
+            # sstate for the shared machine (raspberrypi5) / tune (cortexa76).
             _ensure_image(ctx)
+            cmd = f'bitbake -c cleansstate {shlex.quote(recipe)}'
             _run_in_container(
                 ctx,
-                f'cd {WORK_MOUNT} && bitbake -c cleansstate {shlex.quote(recipe)}',
+                f'cd {WORK_MOUNT} && kas shell {_kas_args("base")} -c {shlex.quote(cmd)}',
                 echo=True,
             )
 
