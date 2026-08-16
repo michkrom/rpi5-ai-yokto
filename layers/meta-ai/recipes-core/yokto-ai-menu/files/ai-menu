@@ -311,7 +311,37 @@ def llama_server_bin():
     return shutil.which("llama-server")
 
 
-def cmd_server(action, model_ref=None, n_ctx=512, detach=True):
+def default_threads():
+    """Cored-limit for power: on a Pi 5 brownouts happen when all 4 Cortex-A76
+    cores spin up at max current, so default to nproc-1 but max 3 and min 2.
+    Override with AI_THREADS."""
+    try:
+        n = int(os.environ.get("AI_THREADS", "0"))
+        if n > 0:
+            return n
+        n = (os.cpu_count() or 4) - 1
+    except Exception:
+        n = 3
+    return max(2, min(n, 3))
+
+
+def _llama_pids():
+    """Return pids of running llama-server via busybox-style `ps w`."""
+    pids = []
+    try:
+        out = subprocess.run(["ps", "w"], capture_output=True, text=True,
+                             timeout=5).stdout
+        for line in out.splitlines():
+            if "llama-server" in line and "grep" not in line:
+                parts = line.split()
+                if parts and parts[0].isdigit():
+                    pids.append(parts[0])
+    except Exception:
+        pass
+    return pids
+
+
+def cmd_server(action, model_ref=None, n_ctx=512, detach=True, threads=None):
     if action == "status":
         up = server_reachable()
         print(json.dumps({"running": up, "host": SERVER_HOST,
@@ -324,12 +354,15 @@ def cmd_server(action, model_ref=None, n_ctx=512, detach=True):
         return 1
 
     if action == "stop":
-        for cmd in (["systemctl", "stop", "llama-server.service"],
-                    ["pkill", "-f", "llama-server"]):
-            subprocess.run(cmd, capture_output=True)
-        time.sleep(1)
+        # No pkill on busybox and no systemd dependency: find the pid and kill.
+        for sig in ("TERM", "KILL"):
+            if not server_reachable():
+                break
+            for pid in _llama_pids():
+                subprocess.run(["kill", "-" + sig, pid], capture_output=True)
+            time.sleep(1.5)
         print(json.dumps({"ok": True, "running": server_reachable()}))
-        return 0
+        return 0 if not server_reachable() else 1
 
     if action == "start":
         model = resolve_model(model_ref)
@@ -342,7 +375,9 @@ def cmd_server(action, model_ref=None, n_ctx=512, detach=True):
                               "model": str(model)}))
             return 0
         cmd = [bin_path, "-m", str(model), "--host", SERVER_HOST,
-               "--port", str(SERVER_PORT), "-c", str(n_ctx)]
+               "--port", str(SERVER_PORT), "-c", str(n_ctx),
+               "-t", str(default_threads() if threads is None else threads),
+               "-tb", str(default_threads() if threads is None else threads)]
         log = Path("/tmp/llama-server.log")
         print(f"starting llama-server: {' '.join(cmd)}", file=sys.stderr)
         if not detach:
@@ -508,6 +543,8 @@ def main():
     p.add_argument("action", choices=["start", "stop", "status"])
     p.add_argument("--model", default=None)
     p.add_argument("--n-ctx", type=int, default=512)
+    p.add_argument("--threads", type=int, default=None,
+                   help="cap CPU threads (power-safe default)")
 
     p = sub.add_parser("chat", help="run a chat")
     p.add_argument("kind", choices=["langchain", "simple"])
@@ -538,7 +575,8 @@ def main():
     elif args.cmd == "remove":
         return cmd_remove(args.model)
     elif args.cmd == "server":
-        return cmd_server(args.action, model_ref=args.model, n_ctx=args.n_ctx)
+        return cmd_server(args.action, model_ref=args.model, n_ctx=args.n_ctx,
+                          threads=args.threads)
     elif args.cmd == "chat":
         return run_chat(args.kind, args.model, prompt=args.prompt,
                         json_out=args.json, max_tokens=args.max_tokens,
