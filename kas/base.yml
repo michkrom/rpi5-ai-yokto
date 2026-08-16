@@ -97,6 +97,10 @@ local_conf_header:
     INSANE_SKIP:grep += "file-rdeps"
   tools: |
     CORE_IMAGE_EXTRA_INSTALL += "util-linux pciutils usbutils i2c-tools vim curl wget python3 file ldd binutils"
+    # SSH server + client so the target is reachable over the network.
+    # debug-tweaks (set above) allows empty-password root login, matching the
+    # SSH workflow in AGENTS.md.
+    CORE_IMAGE_EXTRA_INSTALL:append = " openssh-sshd openssh-ssh openssh-sftp-server"
   swupdate: |
     # CORE_IMAGE_EXTRA_INSTALL += "swupdate swupdate-apply swupdate-cfg"
   debug-tweaks: |
