@@ -77,10 +77,11 @@ def transcribe(audio_path, model_path):
     return None
 
 def generate(prompt, model_path, max_tokens=256, temperature=0.7):
-    """Generate response using llama-cli."""
+    """Generate response using llama-cli (single-shot, no interactive REPL)."""
     try:
         r = subprocess.run([LLAMA_CLI, "-m", str(model_path), "-p", prompt,
-                          "-n", str(max_tokens), "--temp", str(temperature)],
+                          "-n", str(max_tokens), "--temp", str(temperature),
+                          "-no-cnv"],
                         capture_output=True, text=True, timeout=180)
         return r.stdout.strip()
     except Exception as e:

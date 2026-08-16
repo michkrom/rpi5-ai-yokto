@@ -482,6 +482,11 @@ def diagnostics():
 # --------------------------------------------------------------------------- #
 def main():
     ap = argparse.ArgumentParser(description="Yokto AI menu (models, server, chat)")
+    # convenience flags (subcommands also exist: 'ai-menu ram', 'ai-menu list')
+    ap.add_argument("--ram", action="store_true",
+                    help="print detected RAM / tier")
+    ap.add_argument("--list", action="store_true",
+                    help="list model catalogue (echo marks fits/installed)")
     sub = ap.add_subparsers(dest="cmd")
 
     p = sub.add_parser("ram", help="print detected RAM / tier")
@@ -515,6 +520,10 @@ def main():
     args = ap.parse_args()
 
     if args.cmd is None:
+        if args.ram:
+            return cmd_ram()
+        if args.list:
+            return cmd_list()
         interactive()
         return 0
     elif args.cmd == "ram":
