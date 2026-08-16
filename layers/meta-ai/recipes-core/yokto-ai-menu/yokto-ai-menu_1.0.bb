@@ -33,11 +33,14 @@ do_install() {
     install -m 0755 ${WORKDIR}/ai-menu ${D}${bindir}/ai-menu
     install -m 0755 ${WORKDIR}/langchain-chat ${D}${bindir}/langchain-chat
 
-    # systemd service (installed but NOT enabled - models are downloaded on demand)
+    # systemd service - auto-start on the graphical session like the games
+    # launcher. ai-menu handles model download on demand (no model on 1st boot).
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${WORKDIR}/ai-menu.service ${D}${systemd_system_unitdir}/
+    install -d ${D}${systemd_system_unitdir}/graphical.target.wants
+    ln -s ../ai-menu.service ${D}${systemd_system_unitdir}/graphical.target.wants/ai-menu.service
 
-    # desktop entry (optional for the GUI session)
+    # desktop entry (for the GUI session / manual launch)
     install -d ${D}${datadir}/applications
     install -m 0644 ${WORKDIR}/ai-menu.desktop ${D}${datadir}/applications/
 }
@@ -46,5 +49,6 @@ FILES:${PN} = " \
     ${bindir}/ai-menu \
     ${bindir}/langchain-chat \
     ${systemd_system_unitdir}/ai-menu.service \
+    ${systemd_system_unitdir}/graphical.target.wants/ai-menu.service \
     ${datadir}/applications/ai-menu.desktop \
 "

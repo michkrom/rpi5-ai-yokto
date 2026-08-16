@@ -40,3 +40,12 @@ local_conf_header:
     IMAGE_NAME = "image-all"
   z_rootfs-size: |
     IMAGE_ROOTFS_EXTRA_SPACE = "4194304"
+  zz_coexist: |
+    # --all coexistence: games launcher is the single auto-started menu. The
+    # ai-menu stays installed (desktop entry, 'ai-menu' command, and an "AI
+    # Menu" row inside the launcher). Re-enable its autostart with:
+    #   systemctl enable ai-menu.service
+    ROOTFS_POSTPROCESS_COMMAND:append = " yokto_disable_aimenu_autostart; "
+    yokto_disable_aimenu_autostart() {
+        rm -f ${IMAGE_ROOTFS}/etc/systemd/system/graphical.target.wants/ai-menu.service
+    }

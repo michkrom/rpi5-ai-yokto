@@ -466,6 +466,20 @@ def show_diagnostics():
     print(f"  DISPLAY: {os.environ.get('DISPLAY', 'not set')}")
     print(f"  SDL_VIDEODRIVER: {os.environ.get('SDL_VIDEODRIVER', 'not set')}")
 
+def launch_ai_menu():
+    """Launch the AI menu (ai-menu) in this terminal if the package is
+    installed - used mainly by the --all image co-existence."""
+    if not Path("/usr/bin/ai-menu").exists():
+        print("ai-menu not installed")
+        return False
+    print("Launching AI Menu...")
+    result = subprocess.run(["/usr/bin/python3", "/usr/bin/ai-menu"])
+    print(f"ai-menu exited with code {result.returncode}")
+    if not AUTO_SELECT_MODE:
+        input("Press Enter to return to menu...")
+    return True
+
+
 def main_menu(auto_select=None):
     """Main menu using dialog/whiptail"""
     try:
@@ -477,14 +491,15 @@ def main_menu(auto_select=None):
             print(f"  Host: {net['hostname']}  IP: {net['ip']}  {'🌐' if net['connected'] else '❌'}")
             print()
             
-            menu = """1) Launch Quake III Arena (q3e)
+            ai_row = "8) AI Menu (ai-menu)\n" if Path("/usr/bin/ai-menu").exists() else ""
+            menu = f"""1) Launch Quake III Arena (q3e)
 2) Launch Doom (chocolate-doom)
 3) Test EGL (egl-test)
 4) Test SDL2 Window (sdl2-window-test)
 5) Test SDL2 EGL (sdl2-egl-test)
 6) Test SDL2 Renderer (sdl2-renderer-test)
 7) System Diagnostics
-0) Exit
+{ai_row}0) Exit
 """
             print(menu)
             
@@ -523,6 +538,10 @@ def main_menu(auto_select=None):
                     break
             elif choice == "7":
                 show_diagnostics()
+                if auto_select is not None:
+                    break
+            elif choice == "8":
+                launch_ai_menu()
                 if auto_select is not None:
                     break
             elif choice == "0":
