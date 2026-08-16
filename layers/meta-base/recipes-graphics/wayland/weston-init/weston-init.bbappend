@@ -1,22 +1,24 @@
 # yokto weston-init fixes for Raspberry Pi 5
 # - Remove tty0 requirement (Pi5 may not have it)
-# - Remove TTYPath requirement for headless operation
-# - Add --continue-without-input for headless operation
+# - Add --continue-without-input (allow kiosk compositor to start with no input devices)
 # - Fix init.d script (meta-raspberrypi bbappend pattern doesn't match current init script)
+#
+# IMPORTANT: we must NOT remove/comment the TTYPath (and companion TT* settings) in
+# weston.service. Weston's PAM session needs a VT (TTYPath=/dev/tty7) to obtain a
+# logind seat; without it libseat's logind backend fails to open a seat, weston sees
+# "no drm device found" and aborts with fatal: failed to create compositor backend.
+# (Graphics driver is loaded fine in that case; only the seat/VT assignment is missing.)
+# These fixes therefore live here (apply to every image), but the TTY/seat settings
+# are left intact so GUI images (weston) actually bring up the display.
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
 do_install:append:rpi() {
-    # Fix systemd service for headless operation
+    # Fix systemd service
     if [ -e "${D}${systemd_system_unitdir}/weston.service" ]; then
         # Remove tty0 condition that can fail on Pi5
         sed -i '/ConditionPathExists=\/dev\/tty0/d' "${D}${systemd_system_unitdir}/weston.service"
-        # Comment out TTY requirements for headless operation
-        sed -i 's|^TTYPath=.*|#TTYPath=/dev/tty7|' "${D}${systemd_system_unitdir}/weston.service"
-        sed -i 's|^TTYReset=yes|#TTYReset=yes|' "${D}${systemd_system_unitdir}/weston.service"
-        sed -i 's|^TTYVHangup=yes|#TTYVHangup=yes|' "${D}${systemd_system_unitdir}/weston.service"
-        sed -i 's|^TTYVTDisallocate=yes|#TTYVTDisallocate=yes|' "${D}${systemd_system_unitdir}/weston.service"
-        sed -i 's|^StandardInput=tty-fail|#StandardInput=tty-fail|' "${D}${systemd_system_unitdir}/weston.service"
+        # KEEP TTYPath / TT* / StandardInput settings intact so weston gets a VT seat.
         # Ensure --continue-without-input is passed to weston (only if not already present)
         # The meta-raspberrypi bbappend already handles adding this flag, so we check first
         if ! grep -q '\-\-continue-without-input' "${D}${systemd_system_unitdir}/weston.service"; then

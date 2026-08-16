@@ -18,6 +18,9 @@ RDEPENDS:libsdl2:append = " wayland libdrm libgbm"
 # Apply patch for RTLD_GLOBAL on wayland-egl and GLES libraries to fix symbol visibility
 # This ensures wl_egl_window_* symbols are visible to libwayland-client
 # and that GLES symbols are properly exported when loaded via dlopen()
+# NOTE: required - boot/GUI does not work without it (RTLD_LOCAL hides the symbols)
+FILESEXTRAPATHS:prepend := "${THISDIR}/libsdl2:"
+SRC_URI:append:class-target = " file://0001-Use-RTLD_GLOBAL-for-wayland-egl.patch"
 
 # Allow patch fuzz for this custom patch
 INSANE_SKIP:append = " patch-fuzz"
