@@ -2,49 +2,52 @@
 """
 yokto langchain-chat
 ====================
-A small, dependency-light chat client that talks to a llama.cpp-compatible
-OpenAI endpoint (llama-server or llama-cpp-python). It uses langchain for the
-agent/model wrapper but degrades gracefully to plain httpx if langchain is not
-baked into the image (so a closed Yocto build still works).
+A small chat client for a llama.cpp-compatible OpenAI endpoint
+(llama-server or llama-cpp-python). Uses langchain when available (ChatOpenAI)
+and falls back to plain httpx against /v1/chat/completions.
 
-Supports BOTH interactive use AND fully non-interactive/programmatic use:
+Features
+--------
+* interactive REPL + one-shot (-P prompt, --json)
+* rudimentary TOOLS (--tools, or /tools in the REPL):
+    1. system_info : CPU model, load, memory, uptime, hostname, local date/time,
+                     best-effort IP geolocation
+    2. web_search  : DuckDuckGo HTML search (no login/key) -> result list
+    3. web_fetch   : fetch a URL and return its text
+  A tool loop feeds results back to the model until it answers in text.
+* chat commands (REPL): /exit /quit, /model, /compact, /tools on|off, /clear,
+  /info, /search <q> [n], /fetch <url>, /help
+* auto-compaction: older turns are summarized to keep the context window open.
 
-  # one-shot answer (machine friendly):
-  langchain-chat -m model.gguf -P "What is 2+2?" --json
-
-  # short answer, plain text stdout (easy to grep / parse):
-  langchain-chat -P "Tell me a haiku" -n 80
-
-  # start a server of your choice, then chat once:
-  langchain-chat --auto-server -m model.gguf -P "hi" --json
-
-  # interactive session (default when no -P given):
-  langchain-chat -m model.gguf
-
-Exit codes:
-  0  success
-  1  server not reachable / usage error
-  2  missing langchain in non-auto mode
+CLI (non-interactive):
+  langchain-chat -m model.gguf -P "what is 2+2?" --json
+  langchain-chat --tools -P "call the system_info tool" --json
 """
 
 import argparse
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 
 DEFAULT_HOST = os.environ.get("LLAMA_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("LLAMA_PORT", "8080"))
+UA = "Mozilla/5.0 (X11; Linux) yokto-ai/1.0"
 
 
 # --------------------------------------------------------------------------- #
-# Networking helpers
+# Networking
 # --------------------------------------------------------------------------- #
 def server_reachable(host, port, timeout=2.0):
-    """Return True if an HTTP server is listening on host:port."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
@@ -52,216 +55,467 @@ def server_reachable(host, port, timeout=2.0):
         return False
 
 
-def wait_for_server(host, port, tries=30, delay=1.0):
-    for _ in range(tries):
-        if server_reachable(host, port):
-            return True
-        time.sleep(delay)
-    return False
+def http_post(host, port, path, body, timeout=600):
+    req = urllib.request.Request(
+        "http://%s:%s%s" % (host, port, path),
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
 
 
-# --------------------------------------------------------------------------- #
-# Backend (server) helpers - used by --auto-server
-# --------------------------------------------------------------------------- #
-def find_bin(name):
-    for p in os.environ.get("PATH", "").split(":"):
-        cand = Path(p) / name
-        if cand.is_file() and os.access(cand, os.X_OK):
-            return str(cand)
-    return None
-
-
-def start_auto_server(model_path, host, port, n_ctx=None):
-    """Attempt to start a llama.cpp server. Returns (pid, cmd) or (None, reason)."""
-    model_path = str(Path(model_path).resolve())
-    if not Path(model_path).exists():
-        return None, f"model file not found: {model_path}"
-
-    # 1) real llama.cpp server binary (Yocto image / system)
-    bin_path = find_bin("llama-server")
-    if bin_path:
-        cmd = [bin_path, "-m", model_path, "--host", host, "--port", str(port)]
-        if n_ctx:
-            cmd += ["-c", str(n_ctx)]
-        cmd += ["--detach"]  # llama.cpp can daemonize itself
-        return "detached", cmd
-
-    # 2) llama-cpp-python OpenAI-compatible server (common on dev hosts)
+def get_n_ctx(host, port):
+    """Ask llama-server /props for the model context (fallback LLAMA_NCTX)."""
     try:
-        import llama_cpp.server  # noqa: F401
-        cmd = [sys.executable, "-m", "llama_cpp.server",
-               "--model", model_path, "--host", host, "--port", str(port),
-               "--n_gpu_layers", "0"]
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
-        return ("pid", proc.pid), cmd
+        p = json.loads(urllib.request.urlopen(
+            "http://%s:%s/props" % (host, port), timeout=5).read())
+        return int(p.get("default_generation_settings", {}).get("n_ctx", 4096))
+    except Exception:
+        return int(os.environ.get("LLAMA_NCTX", "4096"))
+
+
+# --------------------------------------------------------------------------- #
+# Plain model call (langchain preferred, client keeps it)
+# --------------------------------------------------------------------------- #
+def call_model(host, port, model, messages, max_tokens, temperature, system=None):
+    """Single assistant completion. Uses langchain when importable, else raw HTTP."""
+    try:
+        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(model=model, base_url="http://%s:%s/v1" % (host, port),
+                         api_key="not-needed", temperature=temperature,
+                         max_tokens=max_tokens, timeout=600)
+        msgs = []
+        if system:
+            msgs.append(SystemMessage(content=system))
+        for m in messages:
+            msgs.append(HumanMessage(content=m["content"]) if m["role"] == "user"
+                        else SystemMessage(content=m["content"]))
+        return llm.invoke(msgs).content
     except ImportError:
+        body = {"model": model, "messages": messages, "max_tokens": max_tokens,
+                "temperature": temperature, "stream": False}
+        if system:
+            body["messages"] = [{"role": "system", "content": system}] + messages
+        data = http_post(host, port, "/v1/chat/completions", body)
+        return data["choices"][0]["message"].get("content", "")
+
+
+# --------------------------------------------------------------------------- #
+# Tool definitions + implementations
+# --------------------------------------------------------------------------- #
+TOOL_SCHEMAS = [
+    {"type": "function", "function": {
+        "name": "system_info",
+        "description": "Live system info: CPU model, cores, 1/5/15-min load, "
+                       "memory used/free, uptime, hostname, local time/UTC, "
+                       "and best-effort IP geolocation.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "web_search",
+        "description": "Web search via DuckDuckGo (no key). Returns title, URL, "
+                       "snippet per result.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "search terms"},
+            "n": {"type": "integer", "description": "results, default 5"}},
+            "required": ["query"]}}},
+    {"type": "function", "function": {
+        "name": "web_fetch",
+        "description": "Fetch an http(s) URL and return its readable text.",
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string"}}, "required": ["url"]}}},
+]
+
+
+def _http_get(url, timeout=15):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def _strip_tags(html):
+    html = re.sub(r"(?is)<(script|style).*?</\1>", "", html)
+    html = re.sub(r"(?s)<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", html).strip()
+
+
+class _DDG(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.results = []
+        self._in_title = 0; self._in_snip = 0; self._cur = None
+
+    def handle_starttag(self, tag, attrs):
+        d = dict(attrs)
+        if tag == "a" and "result__a" in d.get("class", ""):
+            self._in_title = 1
+            self._cur = {"title": "", "url": d.get("href", ""), "snippet": ""}
+        elif tag == "a" and "result__snippet" in d.get("class", ""):
+            self._in_snip = 1
+
+    def handle_data(self, data):
+        if self._in_title and self._cur is not None:
+            self._cur["title"] += data
+        elif self._in_snip:
+            self._cur["snippet"] += data
+
+    def handle_endtag(self, tag):
+        if tag == "a":
+            if self._in_title and self._cur is not None:
+                self.results.append(self._cur); self._cur = None
+            self._in_title = False; self._in_snip = False
+
+
+def _mem_gb(kb):
+    return round(kb / 1024 / 1024, 1)
+
+
+def tool_system_info():
+    """CPU/load/mem/uptime/hostname/now + best-effort geolocation."""
+    out = {}
+    try:
+        info = {}
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                info.setdefault("cpu", line.split(":", 1)[1].strip())
+        out["cpu"] = info.get("cpu", "unknown")
+    except Exception:
         pass
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("processor"):
+                out["cores"] = sum(1 for _ in [0]) + out.get("cores", 0) if False else 0
+        out["cores"] = len([l for l in Path("/proc/cpuinfo").read_text().splitlines()
+                            if l.startswith("processor")])
+    except Exception:
+        pass
+    try:
+        out["loadavg"] = open("/proc/loadavg").read().split()[:3]
+    except Exception:
+        pass
+    try:
+        mem = {}
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            k, v = line.split(":", 1)
+            mem[k] = int(v.split()[0])
+        out["mem_gb"] = {"total": _mem_gb(mem.get("MemTotal", 0)),
+                         "used": _mem_gb(mem.get("MemTotal", 0) - mem.get("MemAvailable", 0)),
+                         "available": _mem_gb(mem.get("MemAvailable", 0))}
+    except Exception:
+        pass
+    try:
+        t = float(open("/proc/uptime").read().split()[0])
+        out["uptime_s"] = int(t)
+    except Exception:
+        pass
+    try:
+        out["hostname"] = socket.gethostname()
+    except Exception:
+        pass
+    out["local_time"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    out["utc_time"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # best-effort IP geolocation (free, no key)
+    try:
+        geo = json.loads(urllib.request.urlopen(
+            "http://ip-api.com/json/", timeout=5).read())
+        out["geo"] = {k: geo.get(k) for k in ("status", "regionName",
+                      "city", "lat", "lon", "isp")}
+    except Exception:
+        out["geo"] = "unavailable (offline?)"
+    return json.dumps(out, indent=2)
 
-    # 3) system libllama via llama-cli? not a server - skip.
 
-    return None, ("no server backend found - install llama.cpp 'llama-server' "
-                  "or 'llama-cpp-python' on this host")
+def tool_web_search(query, n=5):
+    try:
+        n = max(1, min(int(n), 10))
+    except Exception:
+        n = 5
+    try:
+        html = _http_get("https://html.duckduckgo.com/html/?q=" +
+                         urllib.parse.quote(query), timeout=20)
+        p = _DDG()
+        p.feed(html)
+        res = []
+        for r in p.results[:n]:
+            # resolve redirect url
+            res.append({"title": r["title"],
+                        "url": re.search(r"uddg=([^&]+)", r["url"]).group(1)
+                        if re.search(r"uddg=([^&]+)", r["url"])
+                        else r["url"],
+                        "snippet": r["snippet"].strip()})
+        if not res:
+            return "no results"
+        return json.dumps(res, indent=2)
+    except Exception as e:
+        return "web_search failed: %r" % e
+
+
+def tool_web_fetch(url):
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return "only http/https allowed"
+    try:
+        txt = _strip_tags(_http_get(url, timeout=20))
+        return txt[:4000]
+    except Exception as e:
+        return "web_fetch failed: %r" % e
+
+
+def exec_tool(name, args):
+    handlers = {"system_info": tool_system_info,
+                "web_search": lambda: tool_web_search(args.get("query", ""),
+                                                      args.get("n", 5)),
+                "web_fetch": lambda: tool_web_fetch(args.get("url", ""))}
+    fn = handlers.get(name)
+    if fn is None:
+        return "unknown tool: %s" % name
+    try:
+        return str(fn())
+    except Exception as e:
+        return "tool error: %r" % e
+
+
+def chat_with_tools(host, port, model, messages, system, max_tokens, temperature,
+                    max_iter=4):
+    """Run a conversation allowing up to max_iter tool calls."""
+    body_msgs = list(messages)
+    if system:
+        body_msgs = [{"role": "system", "content": system}] + body_msgs
+    for i in range(max_iter + 1):
+        body = {"model": model, "messages": body_msgs,
+                "max_tokens": max_tokens, "temperature": temperature,
+                "stream": False, "tools": TOOL_SCHEMAS}
+        data = http_post(host, port, "/v1/chat/completions", body)
+        choice = data["choices"][0]
+        msg = choice["message"]
+        tc = msg.get("tool_calls") or []
+        if not tc:
+            return msg.get("content", "")
+        # record the assistant's tool calls, then execute them
+        body_msgs.append({"role": "assistant", "content": msg.get("content"),
+                          "tool_calls": tc})
+        for call in tc:
+            name = call["function"]["name"]
+            try:
+                args = json.loads(call["function"].get("arguments") or "{}")
+            except Exception:
+                args = {}
+            print("  [tool] %s(%s) ..." % (name, json.dumps(args)[:80]),
+                  file=sys.stderr)
+            result = exec_tool(name, args)
+            body_msgs.append({"role": "tool", "tool_call_id": call.get("id"),
+                              "content": result})
+    return "[tool loop limit reached]"
 
 
 # --------------------------------------------------------------------------- #
-# Core chat functions
+# Context accounting + compaction
 # --------------------------------------------------------------------------- #
-def chat_via_langchain(host, port, model_id, prompt, system=None,
-                       max_tokens=256, temperature=0.7, timeout=600):
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
-
-    llm = ChatOpenAI(
-        model=model_id,
-        base_url=f"http://{host}:{port}/v1",
-        api_key="not-needed",  # llama.cpp does not require a key
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout=timeout,
-    )
-    msgs = []
-    if system:
-        msgs.append(SystemMessage(content=system))
-    msgs.append(HumanMessage(content=prompt))
-    resp = llm.invoke(msgs)
-    return resp.content
+def est_tokens(messages, system=None):
+    n = len(system or "")
+    for m in messages:
+        n += len(m.get("content") or "")
+    return n // 4
 
 
-def chat_via_httpx(host, port, model_id, prompt, system=None,
-                   max_tokens=256, temperature=0.7, timeout=600):
-    """Minimal fallback (no langchain needed). POST /v1/chat/completions."""
-    import httpx
-
-    body = {
-        "model": model_id,
-        "messages": [],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "stream": False,
-    }
-    if system:
-        body["messages"].append({"role": "system", "content": system})
-    body["messages"].append({"role": "user", "content": prompt})
-
-    with httpx.Client(timeout=timeout) as client:
-        r = client.post(f"http://{host}:{port}/v1/chat/completions", json=body)
-        r.raise_for_status()
-        data = r.json()
-    return data["choices"][0]["message"]["content"]
-
-
-def chat(host, port, model_id, prompt, system=None, max_tokens=256,
-         temperature=0.7, use_langchain=True):
-    if use_langchain:
-        try:
-            return chat_via_langchain(host, port, model_id, prompt, system,
-                                      max_tokens, temperature)
-        except ImportError:
-            if not use_langchain:  # already tried fallback
-                raise
-            # fall through to httpx below
-    return chat_via_httpx(host, port, model_id, prompt, system,
-                          max_tokens, temperature)
+def compact(host, port, model, messages, system, max_tokens, temperature):
+    """Summarize older turns into a single context note, keep the newest."""
+    if len(messages) <= 6:
+        return messages
+    keep = messages[-6:]
+    old = messages[:-6]
+    text = "Conversation so far:\n" + "\n".join(
+        "%s: %s" % (m["role"], (m.get("content") or "")) for m in old)
+    prompt = text + ("\n\nAbove is a prior conversation. Write a concise summary "
+                     "preserving every key fact, decision and open request. "
+                     "Only output the summary.")
+    try:
+        summary = call_model(host, port, model,
+                             [{"role": "user", "content": prompt}],
+                             max_tokens=300, temperature=0.3, system=None)
+    except Exception as e:
+        return messages  # leave as-is on error
+    return [{"role": "system",
+             "content": "[compacted prior context summary]\n" + str(summary).strip()}] + keep
 
 
 # --------------------------------------------------------------------------- #
 # Interactive REPL
 # --------------------------------------------------------------------------- #
-def interactive(host, port, model_id, max_tokens, temperature):
-    print(f"langchain-chat  (model={model_id}, server={host}:{port})")
-    print("Type your message. 'quit'/'exit' to leave.")
-    try:
-        while True:
-            try:
-                prompt = input("> ")
-            except (EOFError, KeyboardInterrupt):
+HELP = """commands:
+  /exit /quit        leave
+  /model             show model id
+  /compact           compact context now (auto-compacts near the limit)
+  /tools on|off      toggle tool use
+  /clear             fresh conversation
+  /info              run system_info directly
+  /search <q> [n]    run web_search directly
+  /fetch <url>       run web_fetch directly
+  /system <text>     set/clear the system prompt
+  /help              this help"""
+
+
+def run_interactive(host, port, model, system, max_tokens, temperature,
+                    n_ctx, tools=True):
+    messages = []
+    print("yokto langchain-chat  model=%s  ctx=%d" % (model, n_ctx))
+    print("type /help for commands. Ctrl+C or /exit to quit.")
+    while True:
+        try:
+            raw = input("\nuser> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not raw:
+            continue
+        if raw.startswith("/"):
+            cmd, _, arg = raw.partition(" ")
+            c = cmd.lower()
+            if c in ("/exit", "/quit"):
                 break
-            prompt = prompt.strip()
-            if not prompt or prompt.lower() in ("quit", "exit", "q"):
-                break
-            print("…")
-            try:
-                print(chat(host, port, model_id, prompt,
-                           max_tokens=max_tokens, temperature=temperature))
-            except Exception as e:
-                print(f"[error] {e}", file=sys.stderr)
-    except KeyboardInterrupt:
-        pass
+            elif c == "/help":
+                print(HELP)
+            elif c == "/model":
+                print("model:", model)
+            elif c == "/clear":
+                messages = []
+                print("(context cleared)")
+            elif c == "/system":
+                system = arg.strip() or None
+                print("system:", repr(system))
+            elif c == "/compact":
+                messages = compact(host, port, model, messages, system,
+                                   max_tokens, temperature)
+                print("(compacted to %d msgs)" % len(messages))
+            elif c == "/tools":
+                tools = arg.strip() != "off"
+                print("tools:", "on" if tools else "off")
+            elif c == "/info":
+                print(tool_system_info())
+            elif c == "/search":
+                print(tool_web_search(arg, 5))
+            elif c == "/fetch":
+                print(tool_web_fetch(arg))
+            else:
+                print("unknown command", cmd, "(- /help)")
+            continue
+
+        messages.append({"role": "user", "content": raw})
+        if len(messages) > 4 and est_tokens(messages, system) > 0.7 * n_ctx:
+            print("(auto-compacting...)", file=sys.stderr)
+            messages = compact(host, port, model, messages, system,
+                               max_tokens, temperature)
+        try:
+            if tools:
+                ans = chat_with_tools(host, port, model, messages, system,
+                                      max_tokens, temperature)
+            else:
+                ans = call_model(host, port, model, messages, max_tokens,
+                                 temperature, system)
+        except Exception as e:
+            print("[error] %r" % e, file=sys.stderr)
+            messages.pop()
+            continue
+        print("ai> " + str(ans))
+        messages.append({"role": "assistant", "content": str(ans)})
 
 
 # --------------------------------------------------------------------------- #
-# CLI
+# Entrypoint
 # --------------------------------------------------------------------------- #
-def main():
-    ap = argparse.ArgumentParser(
-        description="langchain chat against a llama.cpp OpenAI endpoint",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    ap.add_argument("-m", "--model", default=None, help="model id/file name")
+def build_parser():
+    ap = argparse.ArgumentParser(description="langchain chat against llama.cpp")
+    ap.add_argument("-m", "--model", default=None)
     ap.add_argument("-H", "--host", default=DEFAULT_HOST)
     ap.add_argument("-p", "--port", type=int, default=DEFAULT_PORT)
-    ap.add_argument("-S", "--system", default=None, help="system prompt")
-    ap.add_argument("-P", "--prompt", default=None,
-                    help="single-shot prompt (non-interactive if set)")
+    ap.add_argument("-P", "--prompt", default=None)
+    ap.add_argument("-S", "--system", default=None)
     ap.add_argument("-n", "--max-tokens", type=int, default=256)
     ap.add_argument("-t", "--temperature", type=float, default=0.7)
-    ap.add_argument("--json", action="store_true",
-                    help="emit a JSON record on stdout (programmatic use)")
-    ap.add_argument("--no-langchain", action="store_true",
-                    help="force the plain-httpx path (no langchain needed)")
-    ap.add_argument("--auto-server", action="store_true",
-                    help="start a local llama.cpp server if none is listening")
-    ap.add_argument("--wait", type=int, default=30,
-                    help="seconds to wait for server to come up")
-    ap.add_argument("--n-ctx", type=int, default=None, help="context length")
-    args = ap.parse_args()
+    ap.add_argument("--n-ctx", type=int, default=None)
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--tools", action="store_true", help="enable tool use")
+    ap.add_argument("--tool-demo", action="store_true",
+                    help="auto-man conversation proving one tool call")
+    ap.add_argument("--max-iter", type=int, default=4)
+    ap.add_argument("--auto-server", action="store_true")
+    ap.add_argument("--wait", type=int, default=30)
+    return ap
 
-    model_id = args.model or "local"
-    if args.auto_server and not server_reachable(args.host, args.port):
-        kind, val = start_auto_server(args.model, args.host, args.port, args.n_ctx)
-        if val is None:
-            print(f"auto-server: {kind}", file=sys.stderr)
-            return 1
-        print(f"auto-server: started ({kind})", file=sys.stderr)
-        if not wait_for_server(args.host, args.port, tries=args.wait):
-            print("auto-server: startup timeout", file=sys.stderr)
-            return 1
 
+def ensure_server(args):
     if not server_reachable(args.host, args.port):
-        print(f"error: no server at {args.host}:{args.port} "
-              "(start llama-server, then retry, or pass --auto-server)",
-              file=sys.stderr)
-        return 1
-
-    use_langchain = not args.no_langchain
-
-    if args.prompt is not None:
-        try:
-            answer = chat(args.host, args.port, model_id, args.prompt,
-                          system=args.system, max_tokens=args.max_tokens,
-                          temperature=args.temperature, use_langchain=use_langchain)
-        except Exception as e:
-            print(f"error: {e}", file=sys.stderr)
+        if not args.auto_server:
+            print("error: no server at %s:%s (start llama-server, or --auto-server)"
+                  % (args.host, args.port), file=sys.stderr)
             return 1
-        if args.json:
-            print(json.dumps({
-                "ok": True,
-                "model": model_id,
-                "host": args.host,
-                "port": args.port,
-                "prompt": args.prompt,
-                "system": args.system,
-                "max_tokens": args.max_tokens,
-                "temperature": args.temperature,
-                "response": str(answer),
-            }, ensure_ascii=False))
+        # attempt to start a local server if the model file exists
+        m = args.model
+        if not m:
+            print("error: --auto-server needs --model <gguf path>", file=sys.stderr)
+            return 1
+        code = subprocess.run([sys.executable, "-m", "llama_cpp.server",
+                               "--model", m, "--host", args.host,
+                               "--port", str(args.port), "--n_gpu_layers", "0"],
+                              capture_output=True).returncode
+        for _ in range(args.wait):
+            if server_reachable(args.host, args.port):
+                break
+            time.sleep(1)
+    return 0
+
+
+def main():
+    ap = build_parser()
+    args = ap.parse_args()
+    rc = run_server(args)
+    if rc:
+        return rc
+    n_ctx = args.n_ctx or get_n_ctx(args.host, args.port)
+
+    if args.tool_demo:
+        return run_tool_demo(args, n_ctx)
+    if args.prompt is not None:
+        msgs = [{"role": "user", "content": args.prompt}]
+        if args.tools:
+            ans = chat_with_tools(args.host, args.port, args.model or "local",
+                                  msgs, args.system, args.max_tokens,
+                                  args.temperature, args.max_iter)
         else:
-            print(str(answer))
+            ans = call_model(args.host, args.port, args.model or "local", msgs,
+                             args.max_tokens, args.temperature, args.system)
+        if args.json:
+            print(json.dumps({"ok": True, "model": args.model, "host": args.host,
+                              "port": args.port, "prompt": args.prompt,
+                              "tools": args.tools,
+                              "max_tokens": args.max_tokens,
+                              "temperature": args.temperature,
+                              "response": str(ans)}, ensure_ascii=False))
+        else:
+            print(str(ans))
         return 0
 
-    # no prompt -> interactive
-    interactive(args.host, args.port, model_id, args.max_tokens, args.temperature)
+    run_interactive(args.host, args.port, args.model or "ms",
+                    args.system, args.max_tokens, args.temperature, n_ctx,
+                    tools=args.tools)
+    return 0
+
+
+def run_serve(args):
+    return ensure_server(args)
+
+
+def run_server(args):
+    return ensure_server(args)
+
+
+def run_tool_demo(args, n_ctx):
+    """Auto-run a conversation that must call system_info, print the final text."""
+    print("== tool demo (system_info) ==")
+    msgs = [{"role": "user",
+             "content": "Use the system_info tool, then tell me the hostname "
+                        "and current local time in one short sentence."}]
+    ans = chat_with_tools(args.host, args.port, args.model or "ms",
+                          msgs, args.system, 160, 0.3, args.max_iter)
+    print("ai> " + str(ans))
     return 0
 
 
