@@ -21,16 +21,20 @@ inherit cmake
 TARGET_CFLAGS:append:rpi = " -mcpu=cortex-a76 "
 TARGET_CXXFLAGS:append:rpi = " -mcpu=cortex-a76 "
 
-# Build examples with SDL2 support for real-time audio
+# Build CLI tools with tests off but WITHOUT SDL2. NOTE: WHISPER_SDL2=ON
+# drags in examples/talk-llama which #include <llama.h> (an llama.cpp header);
+# whisper.cpp builds standalone (only libggml shared with llama-cpp at
+# compile-run time), so that example cannot compile on its own here.
+# Our STT path (yokto-chat) only uses whisper-cli, which builds without SDL2.
 EXTRA_OECMAKE = " \
     -DWHISPER_BUILD_TESTS=OFF \
     -DWHISPER_BUILD_EXAMPLES=ON \
-    -DWHISPER_SDL2=ON \
+    -DWHISPER_SDL2=OFF \
 "
 
 do_install() {
     install -d ${D}${bindir}
-    for bin in whisper-cli whisper-stream; do
+    for bin in whisper-cli whisper-server; do
         if [ -f "${B}/bin/${bin}" ]; then
             install -m 0755 "${B}/bin/${bin}" ${D}${bindir}/
         fi
@@ -44,8 +48,8 @@ do_install() {
     done
 }
 
-# Install CLI tools and whisper library only (libggml from llama-cpp)
-FILES:${PN} = "${bindir}/whisper-cli ${bindir}/whisper-stream ${libdir}"
+# Install CLI and whisper library only (libggml from llama-cpp)
+FILES:${PN} = "${bindir}/whisper-cli ${bindir}/whisper-server ${libdir}"
 FILES:${PN}-dev = ""
 
 # Skip QA checks: dev-elf (libwhisper.so not a symlink), file-rdeps (libggml from llama-cpp)
