@@ -9,10 +9,10 @@
 #   tools/model-store.sh push [HOST]    # ./model-store -> Pi /usr/share/models
 #   tools/model-store.sh list [HOST]    # show both sides
 #
-# HOST is a normal ssh target (default: $PI_HOST or root@192.168.68.74).
+# HOST is a normal ssh target (default: $PI_HOST or root@192.168.68.63).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-HOST="${2:-${PI_HOST:-root@192.168.68.74}}"
+HOST="${2:-${PI_HOST:-root@192.168.68.63}}"
 STORE="model-store"
 mkdir -p "$STORE"
 

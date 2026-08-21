@@ -60,8 +60,12 @@ def http_post(host, port, path, body, timeout=600):
         "http://%s:%s%s" % (host, port, path),
         data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace")
+        raise RuntimeError("HTTP %s: %s" % (e.code, raw[:500]))
 
 
 def get_n_ctx(host, port):
@@ -302,6 +306,10 @@ def chat_with_tools(host, port, model, messages, system, max_tokens, temperature
             print("  [tool] %s(%s) ..." % (name, json.dumps(args)[:80]),
                   file=sys.stderr)
             result = exec_tool(name, args)
+            if not isinstance(result, str):
+                result = json.dumps(result)
+            if len(result) > 1400:        # keep tool results intra-cortex: don't blow n_ctx
+                result = result[:1400] + " ...[truncated]"
             body_msgs.append({"role": "tool", "tool_call_id": call.get("id"),
                               "content": result})
     return "[tool loop limit reached]"
