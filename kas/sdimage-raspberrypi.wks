@@ -3,4 +3,7 @@
 # Raspberry Pi 5. Root partition sized to 2 GB for Chrome/package space.
 
 part /boot --source bootimg-partition --ondisk mmcblk0 --fstype=vfat --label boot --active --align 4096 --size 100
-part / --source rootfs --ondisk mmcblk0 --fstype=ext4 --label root --align 4096 --size 2048
+# Root partition sized to 8 GB so the AI image can store GGUF models on-device
+# (the 2 GB root previously left no room for [2] GB models beside the OS).
+# Raising this only needs a bigger SD card - 16 GB+ is recommended.
+part / --source rootfs --ondisk mmcblk0 --fstype=ext4 --label root --align 4096 --size 8192
