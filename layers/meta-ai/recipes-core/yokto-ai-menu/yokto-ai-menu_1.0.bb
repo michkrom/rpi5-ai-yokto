@@ -33,6 +33,12 @@ do_install() {
     install -m 0755 ${WORKDIR}/ai-menu ${D}${bindir}/ai-menu
     install -m 0755 ${WORKDIR}/langchain-chat ${D}${bindir}/langchain-chat
 
+    # Model store must be writable by BOTH the on-screen TUI (runs as the
+    # 'weston' user inside weston-terminal) and root (SSH / systemd llama-server).
+    # The ai-menu recipe owns the model download, so create it here world-writable
+    # (sticky bit) so either context can add GGUF models.
+    install -d -m 1777 ${D}/usr/share/models
+
     # systemd service - auto-start on the graphical session like the games
     # launcher. ai-menu handles model download on demand (no model on 1st boot).
     install -d ${D}${systemd_system_unitdir}
@@ -51,4 +57,5 @@ FILES:${PN} = " \
     ${systemd_system_unitdir}/ai-menu.service \
     ${systemd_system_unitdir}/graphical.target.wants/ai-menu.service \
     ${datadir}/applications/ai-menu.desktop \
+    usr/share/models \
 "

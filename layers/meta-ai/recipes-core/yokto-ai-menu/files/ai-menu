@@ -162,10 +162,13 @@ def find_model(pattern):
 
 
 def resolve_model(ref):
-    """ref: catalogue id (int or decimal string), name fragment, or path."""
+    """ref: catalogue id (int or decimal string), name fragment, or path.
+    'default'/'auto' resolve to the default catalogue model."""
     if ref is None:
         sym = MODELS_DIR / MODEL_SYMLINK
         return sym if sym.exists() else None
+    if str(ref).strip().lower() in ("default", "auto"):
+        ref = DEFAULT_MODEL_ID
     if str(ref).isdigit():
         mid = int(ref)
         for m in MODELS:
@@ -203,6 +206,23 @@ def installed_models_pretty():
     return ", ".join(parts) if parts else "(none yet)"
 
 
+def not_installed_msg(ref):
+    """Explain why a model could not be found and how to fix it."""
+    low = str(ref).strip().lower() if ref is not None else ""
+    if low in ("", "default", "auto"):
+        d = MODELS[DEFAULT_MODEL_ID - 1]
+        base = (f"default model '{d['name']}' ({d['file']}) is not "
+                f"downloaded")
+    else:
+        base = f"model '{ref}' is not downloaded"
+    inst = installed_models_pretty()
+    if inst == "(none yet)":
+        tail = "no models are downloaded yet."
+    else:
+        tail = f"downloaded: {inst}."
+    return base + "; " + tail
+
+
 def download_url(m):
     """Official HF python API: hf_hub_download(repo, file, local_dir=...)."""
     return (f"huggingface_hub://{m['repo']}/{m['file']}")
@@ -230,34 +250,55 @@ def running_model():
 
 
 def hf_download(repo_id, filename, local_dir):
-    """Download a model with the official huggingface_hub python API.
-    Resumes partial downloads, verifies files, handles redirects/auth.
-    Falls back to wget only if huggingface_hub is not available."""
+    """Download a model with the official huggingface_hub python API
+    (resumes partials, verifies, handles redirects), falling back to a plain
+    HTTP wget/curl fetch if the python hub errors out (connection/SSL/proxy)
+    or is not installed. This keeps downloads working even when the baked
+    hub can't reach HF on the device."""
     local_dir = Path(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
+    dest = local_dir / filename
+    error = None
     try:
         from huggingface_hub import hf_hub_download
-        path = hf_hub_download(
-            repo_id=repo_id,
-            filename=filename,
-            local_dir=str(local_dir),
-        )
-        return Path(path)
-    except ImportError:
-        # fallback: plain wget (no python API baked into the image)
-        url = (f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
-               f"?download=true")
-        dest = local_dir / filename
-        tmp = local_dir / (filename + ".part")
         try:
-            r = subprocess.run(["wget", "-q", "--show-progress", "-O", str(tmp), url],
-                               timeout=3600)
-            if r.returncode != 0:
-                raise RuntimeError(f"wget failed rc={r.returncode}")
-            tmp.rename(dest)
-        finally:
-            tmp.unlink(missing_ok=True)
-        return dest
+            path = hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                local_dir=str(local_dir),
+            )
+            return Path(path)
+        except Exception as e:
+            error = e
+    except ImportError as e:
+        error = e
+
+    # Fallback: plain HTTP fetch (wget, else curl). Works with proxies/CDN and
+    # avoids the python hub's stricter TLS/xet handling.
+    url = (f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
+           f"?download=true")
+    tmp = local_dir / (filename + ".part")
+    try:
+        if shutil.which("wget"):
+            r = subprocess.run(["wget", "-q", "--show-progress", "-O",
+                                str(tmp), url], timeout=3600)
+        elif shutil.which("curl"):
+            r = subprocess.run(["curl", "-L", "--progress-bar", "-o",
+                                str(tmp), url], timeout=3600)
+        else:
+            raise RuntimeError("no wget or curl available to download model")
+        if r.returncode != 0:
+            raise RuntimeError(f"http download failed rc={r.returncode}")
+        tmp.rename(dest)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        # Report BOTH failures (original hub error + the fallback failure) so
+        # the cause is always visible. The bare `raise` re-raises the fallback
+        # RuntimeError and would hide an ImportError, so build the combined
+        # message instead.
+        raise RuntimeError("python-hub download failed and plain-HTTP "
+                           f"fallback also failed: {error}") from error
+    return dest
 
 
 def wget_available():
@@ -291,22 +332,31 @@ def model_table(ram_gb=None, notes=False):
     w_name = max(len(r["name"]) for r in rows)
     w_par = max(max(len(r["params"]) for r in rows), 6)
     w_ram = max(len(r["ram"]) for r in rows)
-    w_note = max(len(r["note"]) for r in rows) if notes else 0
-    hdr = (f"{'':4}{'Model':<{w_name}}  {'Params':>{w_par}}  {'Size':>5}"
-           f"  {'RAM':>{w_ram}}  {'Install':>7}")
-    if notes:
-        hdr += "  Notes"
+    # Params + Size merged into one right-aligned column, e.g. "1.2B  0.8G".
+    w_size = max(max(len(f"{r['size']:.1f}G") for r in rows), 5)
+    # yes/no column: narrow, driven by the data (3 chars), not a wide header.
+    w_inst = max(len("yes"), len("no"), len("Here"))
+    hdr = (f"{'':4}{'Model':<{w_name}}  {'Params':>{w_par}} {'Size':>{w_size}}"
+           f"  {'RAM':>{w_ram}}  {'Here':>{w_inst}}")
     out = [f"RAM: {ram_gb:.1f} GB  (tier {tier})", "", hdr, "-" * len(hdr)]
     for r in rows:
         star = "*" if r["def"] else " "
-        fit = "" if r["fits"] else " !"
+        mark = "!" if not r["fits"] else " "
+        inst = "yes" if r["inst"] else "no"
         line = (f"{r['id']:>2}{star}  {r['name']:<{w_name}}  "
-                f"{r['params']:>{w_par}}  {r['size']:>4.1f}G  "
-                f"{r['ram']}{fit:<4}  {'yes' if r['inst'] else 'no':>7}")
-        if notes:
-            line += f"  {r['note']}"
+                f"{r['params']:>{w_par}} {r['size']:>4.1f}G  "
+                f"{r['ram']:>{w_ram}}{mark} {inst:>{w_inst}}")
+        if r["note"]:
+            # Notes appended after the installed column, no separate header.
+            line += f"   {r['note']}"
         out.append(line)
-    out += ["", "* default model    ! too big for this board's RAM tier"]
+    # Legend keyed to the ACTUAL default model's fit on THIS board, not a static
+    # caption. Only show captions that are true for this tier.
+    dflt = next((r for r in rows if r["def"]), None)
+    legends = ["* default model"]
+    if dflt is not None and not dflt["fits"]:
+        legends.append("   ! too big for this board's RAM tier")
+    out += ["", "  ".join(legends)]
     return "\n".join(out)
 
 
@@ -461,11 +511,8 @@ def cmd_server(action, model_ref=None, n_ctx=4096, detach=True, threads=None):
         # explicit id/name -> strict; Enter (None) -> installed/auto model
         model = resolve_model(model_ref) if explicit else first_installed_model()
         if model is None:
-            if explicit:
-                print(f"error: model '{model_ref}' is not installed. "
-                      f"Installed: {installed_models_pretty()}", file=sys.stderr)
-            else:
-                print("error: no model installed.", file=sys.stderr)
+            ref = model_ref if explicit else None
+            print(f"error: {not_installed_msg(ref)}", file=sys.stderr)
             print("hint: ai-menu download <id>  (e.g. 1 = Qwen2.5-0.5B, "
                   "small and fast)", file=sys.stderr)
             return 2
@@ -508,12 +555,10 @@ def run_chat(kind, model_ref=None, prompt=None, json_out=False, max_tokens=256,
     explicit = model_ref is not None and str(model_ref).strip() != ""
     model = resolve_model(model_ref) if explicit else first_installed_model()
     if model is None:
-        if explicit:
-            print(f"error: model '{model_ref}' is not installed. "
-                  f"Installed: {installed_models_pretty()}", file=sys.stderr)
-        else:
-            print("error: no model installed - run 'ai-menu download' first "
-                  "(see 'ai-menu list' for the catalogue)", file=sys.stderr)
+        ref = model_ref if explicit else None
+        print(f"error: {not_installed_msg(ref)}", file=sys.stderr)
+        print("hint: ai-menu download <id>  (e.g. ai-menu download 1 = "
+              "Qwen2.5-0.5B, small and fast)", file=sys.stderr)
         return 2
     if kind == "langchain":
         script = LLAMA_CHAT
@@ -566,6 +611,55 @@ def run_chat(kind, model_ref=None, prompt=None, json_out=False, max_tokens=256,
 # --------------------------------------------------------------------------- #
 # Interactive TUI (used when no CLI subcommand is given)
 # --------------------------------------------------------------------------- #
+def interactive_chat(kind):
+    """Interactive chat with a download-on-demand step.
+
+    Asks for a model (or Enter=auto/default). If the chosen model is not yet
+    downloaded, offers to download it, downloads on confirmation, then retries
+    the check before launching the chat. Returns without running if the user
+    cancels or the download fails."""
+    ref = input(f"Model (Enter=default {DEFAULT_MODEL_ID}, installed: "
+                f"{installed_ids()}): ").strip() or None
+    low = str(ref).strip().lower() if ref else ""
+
+    # Resolve the model (Enter / 'default' / 'auto' / id / name / path).
+    model = resolve_model(ref) if ref else first_installed_model()
+    if model is None:
+        # Map the request to a catalogue entry so we can offer to download it.
+        target = None
+        if low in ("", "default", "auto"):
+            target = MODELS[DEFAULT_MODEL_ID - 1]
+        elif low.isdigit():
+            target = next((m for m in MODELS if m["id"] == int(low)), None)
+        else:
+            target = next((m for m in MODELS
+                           if low in m["name"].lower()
+                           or low in m["file"].lower()), None)
+        if target is None:
+            print(f"error: {not_installed_msg(ref)}", file=sys.stderr)
+            return
+        ans = input(f"\n'{target['name']}' is not downloaded.\n"
+                    f"  Download it now? ({target['gb']} GB) [y/N]: "
+                    ).strip().lower()
+        if ans not in ("y", "yes"):
+            print("Chat cancelled - no model was downloaded.")
+            return
+        print(f"\nDownloading {target['name']}...")
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        rc = cmd_download(arg_id=target["id"])
+        if rc != 0:
+            print("error: download failed - model not ready", file=sys.stderr)
+            return
+        # Re-check now that it should be present.
+        model = resolve_model(target["file"])
+        if model is None:
+            print("error: download finished but model still not "
+                  "found", file=sys.stderr)
+            return
+
+    run_chat(kind, str(model))
+
+
 def interactive():
     ram = get_ram_gb()
     tier = ram_tier(ram)
@@ -579,10 +673,10 @@ def interactive():
         print("=" * 60)
         print("  1) Download model")
         print("  2) List models")
-        print("  3) Start llama-server")
-        print("  4) Stop llama-server")
-        print("  5) Chat (langchain)")
-        print("  6) Chat (simple llama-cli)")
+        print("  3) Chat (simple llama-cli)")
+        print("  4) Chat (langchain)")
+        print("  5) Start llama-server")
+        print("  6) Stop llama-server")
         print("  7) Diagnostics")
         print("  0) Exit")
         try:
@@ -606,13 +700,13 @@ def interactive():
         elif choice == "2":
             cmd_list(ram_gb=ram, verbose=True)
         elif choice == "3":
-            cmd_server("start", model_ref=input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
+            interactive_chat("simple")
         elif choice == "4":
-            cmd_server("stop")
+            interactive_chat("langchain")
         elif choice == "5":
-            run_chat("langchain", input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
+            cmd_server("start", model_ref=input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
         elif choice == "6":
-            run_chat("simple", input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
+            cmd_server("stop")
         elif choice == "7":
             diagnostics()
         elif choice == "0":
