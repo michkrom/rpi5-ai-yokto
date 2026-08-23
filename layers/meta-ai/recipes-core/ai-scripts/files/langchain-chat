@@ -41,7 +41,8 @@ from pathlib import Path
 
 DEFAULT_HOST = os.environ.get("LLAMA_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("LLAMA_PORT", "8080"))
-UA = "Mozilla/5.0 (X11; Linux) ai-scripts/1.0"
+UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 
 # --------------------------------------------------------------------------- #
@@ -132,7 +133,12 @@ TOOL_SCHEMAS = [
 
 
 def _http_get(url, timeout=15):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    req = urllib.request.Request(url, headers={
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+    })
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
 
@@ -168,6 +174,55 @@ class _DDG(HTMLParser):
             if self._in_title and self._cur is not None:
                 self.results.append(self._cur); self._cur = None
             self._in_title = False; self._in_snip = False
+
+
+def _search_bing(query, n):
+    """Parse Bing HTML results (<li class=b_algo> blocks). Returns a list of
+    {title,url,snippet} dicts, or [] on any failure/no results."""
+    try:
+        html = _http_get("https://www.bing.com/search?q=" +
+                         urllib.parse.quote(query), timeout=20)
+    except Exception:
+        return []
+    out = []
+    for b in re.findall(r'<li class="b_algo".*?</li>', html, re.S)[:n]:
+        m = re.search(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', b, re.S)
+        if not m:
+            continue
+        url, title = m.group(1), m.group(2)
+        title = re.sub(r'<[^>]+>', '', title).strip()
+        # Bing wraps real URLs behind /ck/a redirects with base64 u= parameter
+        u = re.search(r'u=a1([A-Za-z0-9+/=]+)', url)
+        if u:
+            import base64 as _b64
+            try:
+                url = _b64.urlsafe_b64decode(u.group(1) + "==").decode("utf-8", "ignore")
+            except Exception:
+                pass
+        sn = re.search(r'<p[^>]*>(.*?)</p>', b, re.S)
+        snippet = re.sub(r'<[^>]+>', '', sn.group(1)).strip() if sn else ""
+        if title and url.endswith(('.html', '/')) or (title and url.startswith('http')):
+            out.append({"title": title, "url": url, "snippet": snippet[:300]})
+    return out
+
+
+def _search_ddg(query, n):
+    """Parse DuckDuckGo HTML results. Returns a list of dicts or [] (bot-walled)."""
+    try:
+        html = _http_get("https://html.duckduckgo.com/html/?q=" +
+                         urllib.parse.quote(query), timeout=20)
+        p = _DDG()
+        p.feed(html)
+    except Exception:
+        return []
+    res = []
+    for r in p.results[:n]:
+        url = r["url"]
+        m = re.search(r"uddg=([^&]+)", url)
+        res.append({"title": r["title"],
+                    "url": urllib.parse.unquote(m.group(1)) if m else url,
+                    "snippet": r["snippet"].strip()})
+    return res
 
 
 def _mem_gb(kb):
@@ -234,24 +289,16 @@ def tool_web_search(query, n=5):
         n = max(1, min(int(n), 10))
     except Exception:
         n = 5
-    try:
-        html = _http_get("https://html.duckduckgo.com/html/?q=" +
-                         urllib.parse.quote(query), timeout=20)
-        p = _DDG()
-        p.feed(html)
-        res = []
-        for r in p.results[:n]:
-            # resolve redirect url
-            res.append({"title": r["title"],
-                        "url": re.search(r"uddg=([^&]+)", r["url"]).group(1)
-                        if re.search(r"uddg=([^&]+)", r["url"])
-                        else r["url"],
-                        "snippet": r["snippet"].strip()})
-        if not res:
-            return "no results"
-        return json.dumps(res, indent=2)
-    except Exception as e:
-        return "web_search failed: %r" % e
+    # Backends in order of preference for scraping without an API key.
+    for name, fn in (("bing", lambda: _search_bing(query, n)),
+                     ("duckduckgo", lambda: _search_ddg(query, n))):
+        try:
+            res = fn()
+        except Exception:
+            continue
+        if res:
+            return json.dumps(res, indent=2)
+    return "no results (search engines returned a bot-challenge or empty page)"
 
 
 def tool_web_fetch(url):
@@ -380,30 +427,59 @@ def run_interactive(host, port, model, system, max_tokens, temperature,
             if c in ("/exit", "/quit"):
                 break
             elif c == "/help":
-                print(HELP)
+                print(HELP); continue
             elif c == "/model":
-                print("model:", model)
+                print("model:", model); continue
             elif c == "/clear":
-                messages = []
-                print("(context cleared)")
+                messages = []; print("(context cleared)"); continue
             elif c == "/system":
                 system = arg.strip() or None
-                print("system:", repr(system))
+                print("system:", repr(system)); continue
             elif c == "/compact":
                 messages = compact(host, port, model, messages, system,
                                    max_tokens, temperature)
-                print("(compacted to %d msgs)" % len(messages))
+                print("(compacted to %d msgs)" % len(messages)); continue
             elif c == "/tools":
                 tools = arg.strip() != "off"
-                print("tools:", "on" if tools else "off")
+                print("tools:", "on" if tools else "off"); continue
             elif c == "/info":
-                print(tool_system_info())
+                print(tool_system_info()); continue
             elif c == "/search":
-                print(tool_web_search(arg, 5))
+                res = tool_web_search(arg, 6)
+                if res.startswith("no results"):
+                    print(res); continue
+                print(res)
+                messages.append({"role": "user",
+                                 "content": f"Search results for '{arg}':\n{res}\n\nAnswer the user's question using these results."})
             elif c == "/fetch":
-                print(tool_web_fetch(arg))
+                res = tool_web_fetch(arg)
+                if res.startswith("web_fetch failed") or res.startswith("only http"):
+                    print(res); continue
+                print(res[:500])
+                messages.append({"role": "user",
+                                 "content": f"Fetched content from {arg}:\n{res}\n\nAnswer using this content."})
             else:
                 print("unknown command", cmd, "(- /help)")
+                continue
+
+            # Only /search and /fetch fall through to a model call (context-injected).
+            try:
+                if tools:
+                    ans = chat_with_tools(host, port, model, messages, system,
+                                          max_tokens, temperature)
+                else:
+                    ans = call_model(host, port, model, messages, max_tokens,
+                                     temperature, system)
+            except KeyboardInterrupt:
+                messages.pop()
+                print("\n(interrupted)", file=sys.stderr)
+                continue
+            except Exception as e:
+                print("[error] %r" % e, file=sys.stderr)
+                messages.pop()
+                continue
+            print("ai> " + str(ans))
+            messages.append({"role": "assistant", "content": str(ans)})
             continue
 
         messages.append({"role": "user", "content": raw})
