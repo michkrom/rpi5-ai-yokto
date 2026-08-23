@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-yokto langchain-chat
-====================
+langchain-chat
+==============
 A small chat client for a llama.cpp-compatible OpenAI endpoint
 (llama-server or llama-cpp-python). Uses langchain when available (ChatOpenAI)
 and falls back to plain httpx against /v1/chat/completions.
@@ -41,7 +41,7 @@ from pathlib import Path
 
 DEFAULT_HOST = os.environ.get("LLAMA_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("LLAMA_PORT", "8080"))
-UA = "Mozilla/5.0 (X11; Linux) yokto-ai/1.0"
+UA = "Mozilla/5.0 (X11; Linux) ai-scripts/1.0"
 
 
 # --------------------------------------------------------------------------- #
@@ -365,7 +365,7 @@ HELP = """commands:
 def run_interactive(host, port, model, system, max_tokens, temperature,
                     n_ctx, tools=True):
     messages = []
-    print("yokto langchain-chat  model=%s  ctx=%d" % (model, n_ctx))
+    print("langchain-chat  model=%s  ctx=%d" % (model, n_ctx))
     print("type /help for commands. Ctrl+C or /exit to quit.")
     while True:
         try:

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Encoding=UTF-8
 Type=Application
-Name=Yokto AI Menu
+Name=AI Menu
 Comment=Download models, run llama-server and chat
 Exec=/usr/bin/ai-menu
 Icon=applications-system

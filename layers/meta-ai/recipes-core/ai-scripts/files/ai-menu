@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-yokto ai-menu
-=============
+ai-menu
+=======
 Menu + CLI for the --ai image: model management (download/list/remove),
 llama-server control (start/stop/status) and chat launchers
 (langchain chat or plain llama-cli chat).
@@ -32,18 +32,21 @@ import argparse
 import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+# Shared helpers (repo or /usr/bin sibling module).
+import utils
+
 # --------------------------------------------------------------------------- #
 # Environment / paths (override for local testing without sudo)
 # --------------------------------------------------------------------------- #
-MODELS_DIR = Path(os.environ.get("AI_MODELS_DIR", "/usr/share/models"))
-LLAMA_CHAT = Path(os.environ.get("AI_LANGCHAIN_CHAT", "/usr/bin/langchain-chat"))
-YOKTO_CHAT = Path(os.environ.get("AI_YOKTO_CHAT", "/usr/bin/yokto-chat"))
+MODELS_DIR = utils.models_dir()
+
+LLAMA_CHAT = utils.companion_script("langchain-chat", env_key="AI_LANGCHAIN_CHAT")
+SIMPLE_CHAT = utils.companion_script("llama-chat", env_key="AI_SIMPLE_CHAT")
 LLAMA_SERVER = os.environ.get("AI_LLAMA_SERVER", "")  # empty -> auto-detect
 SERVER_HOST = os.environ.get("LLAMA_HOST", "127.0.0.1")
 SERVER_PORT = int(os.environ.get("LLAMA_PORT", "8080"))
@@ -113,39 +116,19 @@ PARAMS = {1: "0.5B", 2: "1.2B", 3: "1.5B", 4: "1.7B", 5: "2.6B",
 # System helpers
 # --------------------------------------------------------------------------- #
 def get_ram_gb():
-    """Total RAM in GB, rounded to .1."""
-    try:
-        for line in Path("/proc/meminfo").read_text().splitlines():
-            if line.startswith("MemTotal:"):
-                return round(int(line.split()[1]) / 1024 / 1024, 1)
-    except Exception:
-        pass
-    return 4.0
+    return utils.total_ram_gb()
 
 
 def ram_tier(ram_gb):
-    return "8g" if ram_gb >= 6.0 else "4g"
+    return utils.ram_tier(ram_gb)
 
 
 def local_ip():
-    try:
-        out = subprocess.run(["ip", "-4", "addr", "show"], capture_output=True,
-                             text=True, timeout=3).stdout
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("inet ") and "127." not in line:
-                return line.split()[1].split("/")[0]
-    except Exception:
-        pass
-    return "unknown"
+    return utils.local_ip()
 
 
 def server_reachable(host=SERVER_HOST, port=SERVER_PORT, timeout=1.5):
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
+    return utils.server_reachable(host, port, timeout)
 
 
 def find_model(pattern):
@@ -450,21 +433,15 @@ def cmd_remove(pattern):
 def llama_server_bin():
     if LLAMA_SERVER:
         return LLAMA_SERVER if Path(LLAMA_SERVER).exists() else None
-    return shutil.which("llama-server")
+    return utils.binary("llama-server")
 
 
 def default_threads():
     """Cored-limit for power: on a Pi 5 brownouts happen when all 4 Cortex-A76
     cores spin up at max current, so default to nproc-1 but max 3 and min 2.
     Override with AI_THREADS."""
-    try:
-        n = int(os.environ.get("AI_THREADS", "0"))
-        if n > 0:
-            return n
-        n = (os.cpu_count() or 4) - 1
-    except Exception:
-        n = 3
-    return max(2, min(n, 3))
+    return utils.thread_cap()
+
 
 
 def _llama_pids():
@@ -537,11 +514,9 @@ def cmd_server(action, model_ref=None, n_ctx=4096, detach=True, threads=None):
             return subprocess.run(cmd).returncode
         with log.open("a") as lf:
             subprocess.Popen(cmd, stdout=lf, stderr=lf, start_new_session=True)
-        for _ in range(int(os.environ.get("AI_WAIT_SERVER", "60"))):
-            if server_reachable():
-                break
-            time.sleep(1)
-        up = server_reachable()
+        up, _ = utils.wait_server_ready(
+            SERVER_HOST, SERVER_PORT, str(model),
+            timeout=1.5, tries=int(os.environ.get("AI_WAIT_SERVER", "60")))
         print(json.dumps({"ok": up, "running": up, "model": str(model),
                           "log": str(log)}))
         return 0 if up else 1
@@ -590,7 +565,7 @@ def run_chat(kind, model_ref=None, prompt=None, json_out=False, max_tokens=256,
         if json_out:
             argv.append("--json")
     elif kind == "simple":
-        script = YOKTO_CHAT
+        script = SIMPLE_CHAT
         if not script.exists():
             print(f"error: {script} not installed", file=sys.stderr)
             return 1
@@ -664,20 +639,19 @@ def interactive():
     ram = get_ram_gb()
     tier = ram_tier(ram)
     print("=" * 60)
-    print("  Yokto AI Menu")
+    print("  AI Menu")
     print(f"  RAM: {ram} GB ({tier} tier)  IP: {local_ip()}")
     print("=" * 60)
     while True:
         print(f"\n{'=' * 60}")
         print("  AI Menu")
         print("=" * 60)
-        print("  1) Download model")
-        print("  2) List models")
-        print("  3) Chat (simple llama-cli)")
-        print("  4) Chat (langchain)")
-        print("  5) Start llama-server")
-        print("  6) Stop llama-server")
-        print("  7) Diagnostics")
+        print("  1) Models (download / list)")
+        print("  2) Chat (simple llama-cli)")
+        print("  3) Chat (langchain)")
+        print("  4) Start llama-server")
+        print("  5) Stop llama-server")
+        print("  6) Diagnostics")
         print("  0) Exit")
         try:
             choice = input("Select option: ").strip()
@@ -688,26 +662,22 @@ def interactive():
         tier = ram_tier(ram)
 
         if choice == "1":
-            print("\nAvailable models:")
+            print("\nAvailable models (downloaded marked 'yes'):")
             print(model_table(ram, notes=True))
-            sel = input(f"Model number [Enter=default {DEFAULT_MODEL_ID}]: ").strip()
+            sel = input(f"Model to download [number/name, Enter to view]: ").strip()
             if sel.isdigit():
                 cmd_download(arg_id=int(sel))
             elif sel:
                 cmd_download(arg_name=sel)
-            else:
-                cmd_download(arg_id=DEFAULT_MODEL_ID)
         elif choice == "2":
-            cmd_list(ram_gb=ram, verbose=True)
-        elif choice == "3":
             interactive_chat("simple")
-        elif choice == "4":
+        elif choice == "3":
             interactive_chat("langchain")
-        elif choice == "5":
+        elif choice == "4":
             cmd_server("start", model_ref=input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
-        elif choice == "6":
+        elif choice == "5":
             cmd_server("stop")
-        elif choice == "7":
+        elif choice == "6":
             diagnostics()
         elif choice == "0":
             print("Goodbye!")
@@ -727,7 +697,7 @@ def diagnostics():
     print(f"llama-server: {llama_server_bin() or 'NOT FOUND'}")
     print(f"server on :{SERVER_PORT}: {'UP' if server_reachable() else 'down'}")
     print(f"langchain-chat: {LLAMA_CHAT}  exists={LLAMA_CHAT.exists()}")
-    print(f"yokto-chat:     {YOKTO_CHAT}  exists={YOKTO_CHAT.exists()}")
+    print(f"llama-chat:     {SIMPLE_CHAT}  exists={SIMPLE_CHAT.exists()}")
     try:
         import langchain  # noqa: F401
         print("langchain (python import): OK")
@@ -739,7 +709,7 @@ def diagnostics():
 # CLI entry point
 # --------------------------------------------------------------------------- #
 def main():
-    ap = argparse.ArgumentParser(description="Yokto AI menu (models, server, chat)")
+    ap = argparse.ArgumentParser(description="AI menu (models, server, chat)")
     # convenience flags (subcommands also exist: 'ai-menu ram', 'ai-menu list')
     ap.add_argument("--ram", action="store_true",
                     help="print detected RAM / tier")

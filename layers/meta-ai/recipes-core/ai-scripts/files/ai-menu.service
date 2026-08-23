@@ -1,5 +1,5 @@
 [Unit]
-Description=Yokto AI Menu - models & chat launcher
+Description=AI Menu - models & chat launcher
 After=weston.service
 Wants=weston.service
 
