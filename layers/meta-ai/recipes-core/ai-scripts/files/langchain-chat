@@ -409,8 +409,13 @@ def run_interactive(host, port, model, system, max_tokens, temperature,
         messages.append({"role": "user", "content": raw})
         if len(messages) > 4 and est_tokens(messages, system) > 0.7 * n_ctx:
             print("(auto-compacting...)", file=sys.stderr)
-            messages = compact(host, port, model, messages, system,
-                               max_tokens, temperature)
+            try:
+                messages = compact(host, port, model, messages, system,
+                                   max_tokens, temperature)
+            except KeyboardInterrupt:
+                messages.pop()
+                print("\n(interrupted)", file=sys.stderr)
+                continue
         try:
             if tools:
                 ans = chat_with_tools(host, port, model, messages, system,
@@ -418,6 +423,10 @@ def run_interactive(host, port, model, system, max_tokens, temperature,
             else:
                 ans = call_model(host, port, model, messages, max_tokens,
                                  temperature, system)
+        except KeyboardInterrupt:
+            messages.pop()
+            print("\n(interrupted)", file=sys.stderr)
+            continue
         except Exception as e:
             print("[error] %r" % e, file=sys.stderr)
             messages.pop()

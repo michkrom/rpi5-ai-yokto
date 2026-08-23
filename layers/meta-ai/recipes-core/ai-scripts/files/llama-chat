@@ -119,35 +119,41 @@ def generate(prompt, model_path, max_tokens=256, temperature=0.7):
 
 def text_chat(model_path, max_tokens=256, temperature=0.7):
     """Text-only chat interface."""
-    print("llama-chat (text mode). Ctrl+C or 'quit' to exit.")
+    print("llama-chat (text mode). Ctrl+C or /quit to exit.")
     print(f"Model: {model_path.name}")
+    quit_cmds = {"q", "quit", "exit", "/quit", "/exit", "/q"}
     while True:
         try:
             prompt = input("\n> ")
         except (EOFError, KeyboardInterrupt):
             break
-        if prompt.lower() in ["quit", "exit", "q"]:
+        if prompt.strip().lower() in quit_cmds:
             break
         if not prompt.strip():
             continue
         print("Thinking...", file=sys.stderr)
-        response = generate(prompt, model_path, max_tokens, temperature)
+        try:
+            response = generate(prompt, model_path, max_tokens, temperature)
+        except KeyboardInterrupt:
+            print("\n(interrupted)", file=sys.stderr)
+            continue
         print(f"\n{response}")
 
 def voice_chat(model_path, whisper_path, max_tokens=256, temperature=0.7):
     """Voice + text chat interface."""
-    print("llama-chat (voice mode). Ctrl+C or 'quit' to exit.")
+    print("llama-chat (voice mode). Ctrl+C or /quit to exit.")
     print(f"LLM Model: {model_path.name}")
     print(f"STT Model: {whisper_path.name}")
+    quit_cmds = {"q", "quit", "exit", "/quit", "/exit", "/q"}
     while True:
         try:
-            user = input("\n[Enter=speak/text=type/quit] ")
+            user = input("\n[Enter=speak/text=type/quit] ").strip()
         except (EOFError, KeyboardInterrupt):
             break
-        if user.lower() in ["quit", "exit", "q"]:
+        if user.lower() in quit_cmds:
             break
 
-        if user.strip():
+        if user:
             prompt = user
         elif check_audio():
             wav = record_audio()
@@ -165,7 +171,11 @@ def voice_chat(model_path, whisper_path, max_tokens=256, temperature=0.7):
             continue
 
         print("Thinking...", file=sys.stderr)
-        response = generate(prompt, model_path, max_tokens, temperature)
+        try:
+            response = generate(prompt, model_path, max_tokens, temperature)
+        except KeyboardInterrupt:
+            print("\n(interrupted)", file=sys.stderr)
+            continue
         print(f"\nAI: {response}")
 
 def main():
@@ -217,4 +227,11 @@ def main():
         text_chat(llama_model, args.max_tokens, args.temperature)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nllama-chat: interrupted - exiting.", file=sys.stderr)
+        sys.exit(130)
+    except FileNotFoundError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)

@@ -445,7 +445,10 @@ def default_threads():
 
 
 def _llama_pids():
-    """Return pids of running llama-server via busybox-style `ps w`."""
+    """Return pids of running llama-server processes.
+
+    Tries `ps w` first (busybox/desktop), then falls back to scanning
+    /proc/*/cmdline directly so stop works regardless of the ps dialect."""
     pids = []
     try:
         out = subprocess.run(["ps", "w"], capture_output=True, text=True,
@@ -457,6 +460,19 @@ def _llama_pids():
                     pids.append(parts[0])
     except Exception:
         pass
+    if not pids:
+        try:
+            for proc in Path("/proc").iterdir():
+                if not proc.name.isdigit():
+                    continue
+                try:
+                    cmd = (proc / "cmdline").read_bytes().replace(b"\0", b" ")
+                except OSError:
+                    continue
+                if b"llama-server" in cmd:
+                    pids.append(proc.name)
+        except Exception:
+            pass
     return pids
 
 
@@ -593,8 +609,13 @@ def interactive_chat(kind):
     downloaded, offers to download it, downloads on confirmation, then retries
     the check before launching the chat. Returns without running if the user
     cancels or the download fails."""
-    ref = input(f"Model (Enter=default {DEFAULT_MODEL_ID}, installed: "
-                f"{installed_ids()}): ").strip() or None
+    ref = None
+    try:
+        ref = input(f"Model (Enter=default {DEFAULT_MODEL_ID}, installed: "
+                    f"{installed_ids()}): ").strip() or None
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
     low = str(ref).strip().lower() if ref else ""
 
     # Resolve the model (Enter / 'default' / 'auto' / id / name / path).
@@ -655,35 +676,43 @@ def interactive():
         print("  0) Exit")
         try:
             choice = input("Select option: ").strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError:
+            print()
             break
+        except KeyboardInterrupt:
+            print()
+            continue
 
         ram = get_ram_gb()
         tier = ram_tier(ram)
 
-        if choice == "1":
-            print("\nAvailable models (downloaded marked 'yes'):")
-            print(model_table(ram, notes=True))
-            sel = input(f"Model to download [number/name, Enter to view]: ").strip()
-            if sel.isdigit():
-                cmd_download(arg_id=int(sel))
-            elif sel:
-                cmd_download(arg_name=sel)
-        elif choice == "2":
-            interactive_chat("simple")
-        elif choice == "3":
-            interactive_chat("langchain")
-        elif choice == "4":
-            cmd_server("start", model_ref=input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
-        elif choice == "5":
-            cmd_server("stop")
-        elif choice == "6":
-            diagnostics()
-        elif choice == "0":
-            print("Goodbye!")
-            break
-        else:
-            print("Invalid option")
+        try:
+            if choice == "1":
+                print("\nAvailable models (downloaded marked 'yes'):")
+                print(model_table(ram, notes=True))
+                sel = input(f"Model to download [number/name, Enter to view]: ").strip()
+                if sel.isdigit():
+                    cmd_download(arg_id=int(sel))
+                elif sel:
+                    cmd_download(arg_name=sel)
+            elif choice == "2":
+                interactive_chat("simple")
+            elif choice == "3":
+                interactive_chat("langchain")
+            elif choice == "4":
+                cmd_server("start", model_ref=input(f"Model id [Enter=auto, installed: {installed_ids()}]: ").strip() or None)
+            elif choice == "5":
+                cmd_server("stop")
+            elif choice == "6":
+                diagnostics()
+            elif choice == "0":
+                print("Goodbye!")
+                break
+            else:
+                print("Invalid option")
+        except KeyboardInterrupt:
+            print("\n(back to menu)", file=sys.stderr)
+            continue
 
 
 def diagnostics():
